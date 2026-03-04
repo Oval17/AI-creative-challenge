@@ -12,134 +12,186 @@ function scaleWrapper() {
 scaleWrapper();
 window.addEventListener('resize', scaleWrapper);
 
-// ── Canvas setup ─────────────────────────────────────────────
+// ── Canvas setup — render at half res, scale up 2x for speed ─
 const canvas = document.getElementById('fractalCanvas');
 const ctx    = canvas.getContext('2d');
-const CW = 1080, CH = 1350;
-canvas.width = CW; canvas.height = CH;
+canvas.width  = 1080;
+canvas.height = 1350;
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = 'high';
 
-// ── Zoom target — deep Mandelbrot point (Seahorse Valley) ────
+// Offscreen low-res buffer (540×675 = 1/4 pixels)
+const RES = 2; // divisor
+const BW = Math.floor(1080 / RES);
+const BH = Math.floor(1350 / RES);
+const offscreen = new OffscreenCanvas(BW, BH);
+const octx = offscreen.getContext('2d');
+const imgData = octx.createImageData(BW, BH);
+const pixels  = imgData.data;
+
+// ── Zoom target — Seahorse Valley ────────────────────────────
 const TARGET_RE = -0.7436447860;
 const TARGET_IM =  0.1318252536;
 
 // ── State ────────────────────────────────────────────────────
-let zoom       = 1.0;
-const ZOOM_SPEED = 1.008;          // multiply per frame (~60fps smooth zoom)
-const MAX_ZOOM   = 1e11;           // reset after this depth
-const MAX_ITER   = 300;
+let zoom      = 1.0;
+const ZOOM_SPEED = 1.018;   // faster: ~1.8% per frame
+const MAX_ZOOM   = 5e9;
+const MAX_ITER   = 180;     // reduced for speed
 
-// ImageData for direct pixel writes
-const imgData = ctx.createImageData(CW, CH);
-const pixels  = imgData.data;
-
-// ── Smooth iteration count (escape-time + fractional) ────────
+// ── Mandelbrot with smooth escape ────────────────────────────
 function mandelbrot(cx, cy) {
-  let zx = 0, zy = 0, iter = 0;
-  while (iter < MAX_ITER) {
+  let zx = 0, zy = 0;
+  for (let i = 0; i < MAX_ITER; i++) {
     const zx2 = zx * zx, zy2 = zy * zy;
-    if (zx2 + zy2 > 4) break;
+    if (zx2 + zy2 > 4) {
+      const log2 = Math.log2(zx2 + zy2);
+      return i + 1 - Math.log2(log2 * 0.5);
+    }
     zy = 2 * zx * zy + cy;
     zx = zx2 - zy2 + cx;
-    iter++;
   }
-  if (iter === MAX_ITER) return -1; // inside set
-
-  // Smooth colouring (continuous escape time)
-  const log2 = Math.log2(zx * zx + zy * zy);
-  return iter + 1 - Math.log2(log2 / 2);
+  return -1;
 }
 
-// ── Cosmic palette — maps smooth t [0,1] to RGB ──────────────
-function palette(t) {
-  // 5-stop cosmic gradient: deep blue → purple → cyan → gold → white
+// ── Cosmic palette lookup table (1024 entries, pre-computed) ──
+const LUT_SIZE = 1024;
+const LUT = new Uint8Array(LUT_SIZE * 3);
+(function buildLUT() {
   const stops = [
-    [  2,   2,  20],   // 0.0 – deep space
-    [ 10,   0,  80],   // 0.2 – deep violet
-    [  0, 100, 200],   // 0.4 – electric blue
-    [  0, 230, 210],   // 0.6 – cyan
-    [255, 200,  50],   // 0.8 – gold
-    [255, 255, 255],   // 1.0 – white core
+    [  2,   2,  25],
+    [ 20,   0, 100],
+    [  0,  80, 200],
+    [  0, 220, 200],
+    [255, 180,  30],
+    [255, 240, 120],
+    [255, 255, 255],
   ];
-  const scaled = t * (stops.length - 1);
-  const i0 = Math.floor(scaled);
-  const i1 = Math.min(i0 + 1, stops.length - 1);
-  const f  = scaled - i0;
-  const a  = stops[i0], b = stops[i1];
-  return [
-    a[0] + (b[0] - a[0]) * f,
-    a[1] + (b[1] - a[1]) * f,
-    a[2] + (b[2] - a[2]) * f,
-  ];
+  for (let i = 0; i < LUT_SIZE; i++) {
+    const t = i / (LUT_SIZE - 1);
+    const scaled = t * (stops.length - 1);
+    const i0 = Math.floor(scaled);
+    const i1 = Math.min(i0 + 1, stops.length - 1);
+    const f  = scaled - i0;
+    const a = stops[i0], b = stops[i1];
+    LUT[i * 3]     = a[0] + (b[0] - a[0]) * f;
+    LUT[i * 3 + 1] = a[1] + (b[1] - a[1]) * f;
+    LUT[i * 3 + 2] = a[2] + (b[2] - a[2]) * f;
+  }
+})();
+
+function lutColor(smooth) {
+  const t = (smooth % 48) / 48;
+  const idx = Math.floor((Math.sin(t * Math.PI * 2) * 0.5 + 0.5) * (LUT_SIZE - 1));
+  return idx * 3;
 }
 
 // ── Render one frame ─────────────────────────────────────────
 function render() {
-  const scale = 3.5 / zoom;                   // complex-plane extent
-  const aspect = CW / CH;
+  const scale   = 3.5 / zoom;
+  const aspect  = BW / BH;
   const reRange = scale * aspect;
   const imRange = scale;
-
-  const reMin = TARGET_RE - reRange / 2;
-  const imMin = TARGET_IM - imRange / 2;
-  const reStep = reRange / CW;
-  const imStep = imRange / CH;
+  const reMin   = TARGET_RE - reRange * 0.5;
+  const imMin   = TARGET_IM - imRange * 0.5;
+  const reStep  = reRange / BW;
+  const imStep  = imRange / BH;
 
   let idx = 0;
-  for (let py = 0; py < CH; py++) {
+  for (let py = 0; py < BH; py++) {
     const im = imMin + py * imStep;
-    for (let px = 0; px < CW; px++) {
-      const re = reMin + px * reStep;
-      const smooth = mandelbrot(re, im);
-
-      let r, g, b;
+    for (let px = 0; px < BW; px++) {
+      const smooth = mandelbrot(reMin + px * reStep, im);
       if (smooth < 0) {
-        // Inside set — pure black
-        r = g = b = 0;
+        pixels[idx] = pixels[idx+1] = pixels[idx+2] = 0;
       } else {
-        // Map smooth value to palette with cycling
-        const t = (smooth % 64) / 64;
-        // Add a twist: cycle through palette with period 64 iters
-        const [pr, pg, pb] = palette((Math.sin(t * Math.PI) + 1) / 2);
-        // Brightness boost near boundary
-        const bright = Math.pow(t, 0.5);
-        r = pr * bright;
-        g = pg * bright;
-        b = pb * bright;
+        const li = lutColor(smooth);
+        const bright = Math.min(1, smooth / 12);
+        pixels[idx]     = LUT[li]     * bright;
+        pixels[idx + 1] = LUT[li + 1] * bright;
+        pixels[idx + 2] = LUT[li + 2] * bright;
       }
-
-      pixels[idx]     = r;
-      pixels[idx + 1] = g;
-      pixels[idx + 2] = b;
       pixels[idx + 3] = 255;
       idx += 4;
     }
   }
-  ctx.putImageData(imgData, 0, 0);
+  octx.putImageData(imgData, 0, 0);
+  ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
 }
+
+// ── Web Audio — cosmic ambient drone + shimmer ────────────────
+let audioCtx = null, audioStarted = false;
+
+function initAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const t = audioCtx.currentTime;
+
+  // Master gain (fade in)
+  const master = audioCtx.createGain();
+  master.gain.setValueAtTime(0, t);
+  master.gain.linearRampToValueAtTime(0.5, t + 3);
+  master.connect(audioCtx.destination);
+
+  // Sub drone – 55Hz sine
+  const sub = audioCtx.createOscillator();
+  sub.type = 'sine'; sub.frequency.value = 55;
+  const subGain = audioCtx.createGain(); subGain.gain.value = 0.3;
+  sub.connect(subGain); subGain.connect(master); sub.start();
+
+  // Mid drone – 110Hz triangle, slightly detuned
+  const mid = audioCtx.createOscillator();
+  mid.type = 'triangle'; mid.frequency.value = 110.15;
+  const midGain = audioCtx.createGain(); midGain.gain.value = 0.2;
+  mid.connect(midGain); midGain.connect(master); mid.start();
+
+  // High shimmer – 440Hz sine, tremolo LFO
+  const high = audioCtx.createOscillator();
+  high.type = 'sine'; high.frequency.value = 440;
+  const tremolo = audioCtx.createGain(); tremolo.gain.value = 0.05;
+  const lfo = audioCtx.createOscillator();
+  lfo.frequency.value = 0.25;
+  const lfoGain = audioCtx.createGain(); lfoGain.gain.value = 0.04;
+  lfo.connect(lfoGain); lfoGain.connect(tremolo.gain);
+  high.connect(tremolo); tremolo.connect(master); high.start(); lfo.start();
+
+  // Space wind – bandpass filtered noise
+  const bufLen = audioCtx.sampleRate * 3;
+  const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf; src.loop = true;
+  const bp = audioCtx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 300; bp.Q.value = 0.3;
+  const windGain = audioCtx.createGain(); windGain.gain.value = 0.06;
+  src.connect(bp); bp.connect(windGain); windGain.connect(master); src.start();
+
+  // Slow LFO on wind filter frequency (0.05Hz sweep 200-600Hz)
+  const wLFO = audioCtx.createOscillator();
+  const wLFOGain = audioCtx.createGain(); wLFOGain.gain.value = 200;
+  wLFO.frequency.value = 0.05;
+  wLFO.connect(wLFOGain); wLFOGain.connect(bp.frequency); wLFO.start();
+}
+
+// Overlay tap-to-unmute
+const overlay = document.getElementById('audioOverlay');
+function startAudio() {
+  initAudio();
+  if (audioCtx) audioCtx.resume().catch(() => {});
+  if (overlay) overlay.classList.add('hidden');
+}
+if (overlay) overlay.addEventListener('click', startAudio);
+document.addEventListener('click', startAudio, { once: true });
 
 // ── Animation loop ───────────────────────────────────────────
-let lastTime = 0;
-const TARGET_FPS = 60;
-const FRAME_MS   = 1000 / TARGET_FPS;
-
-// We render every 2 frames to reduce CPU load (effective 30fps render)
-let frameCount = 0;
-
-function animate(ts) {
-  requestAnimationFrame(animate);
-  if (ts - lastTime < FRAME_MS) return;
-  lastTime = ts;
-
-  frameCount++;
-  // Render every 2nd frame for performance, still animates zoom each frame
-  if (frameCount % 2 === 0) {
-    render();
-  }
-
+function animate() {
+  render();
   zoom *= ZOOM_SPEED;
-  if (zoom > MAX_ZOOM) zoom = 1.0;  // smooth reset to start
+  if (zoom > MAX_ZOOM) zoom = 1.0;
+  requestAnimationFrame(animate);
 }
 
-// First render immediately so screen isn't blank
 render();
 requestAnimationFrame(animate);
