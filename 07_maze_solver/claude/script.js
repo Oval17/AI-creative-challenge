@@ -219,9 +219,59 @@ function nextPhase() {
   }
 }
 
+// ── Audio ─────────────────────────────────────────────────────
+let ac = null, audioReady = false;
+
+async function startAudio() {
+  if (audioReady) { if (ac.state === 'suspended') await ac.resume(); return; }
+  try {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    await ac.resume();
+    audioReady = true;
+  } catch(e) { console.warn('audio:', e); }
+}
+
+function playTone(freq, dur, type = 'sine', vol = 0.08) {
+  if (!ac || ac.state !== 'running') return;
+  const now = ac.currentTime;
+  const osc = ac.createOscillator();
+  const env = ac.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  env.gain.setValueAtTime(vol, now);
+  env.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  osc.connect(env); env.connect(ac.destination);
+  osc.start(now); osc.stop(now + dur);
+}
+
+// Carve sound: soft high click, pitched by position
+function playCarve(r, c) {
+  const freq = 300 + (c / COLS) * 600 + (r / ROWS) * 300;
+  playTone(freq, 0.04, 'sine', 0.05);
+}
+
+// Explore sound: softer, lower frequency sweep
+function playExplore(r, c) {
+  const freq = 120 + (r / ROWS) * 200 + (c / COLS) * 100;
+  playTone(freq, 0.03, 'triangle', 0.04);
+}
+
+// Path sound: bright arpeggio-like note
+function playPath(idx) {
+  const notes = [523, 659, 784, 1047, 1319];
+  const freq  = notes[idx % notes.length];
+  playTone(freq, 0.07, 'sine', 0.07);
+}
+
+// Auto-start audio on any interaction
+startAudio();
+['click','keydown','touchstart','pointerdown','mousemove'].forEach(ev =>
+  document.addEventListener(ev, () => startAudio(), { once: true, passive: true })
+);
+
 // ── Animation loop ────────────────────────────────────────────
-const GEN_SPEED   = 3;   // ms per batch tick
-const SOLVE_SPEED = 16;  // ms per batch tick
+const GEN_SPEED   = 18;  // ms per batch tick (slower, visible)
+const SOLVE_SPEED = 20;  // ms per solve tick
 
 function animate(ts) {
   const dt = ts - lastT;
@@ -229,10 +279,12 @@ function animate(ts) {
   if (phase === 'generating' && dt >= GEN_SPEED) {
     lastT = ts;
     carveMap.clear();
-    for (let i = 0; i < 5 && genIdx < genSteps.length; i++, genIdx++) {
+    // Process 2 steps per tick (slower than before = 5)
+    for (let i = 0; i < 2 && genIdx < genSteps.length; i++, genIdx++) {
       const s = genSteps[genIdx];
       carveMap.set(s.r * COLS + s.c, true);
       frontierCell = [s.r, s.c];
+      playCarve(s.r, s.c);
     }
     if (genIdx >= genSteps.length) nextPhase();
   }
@@ -240,7 +292,8 @@ function animate(ts) {
   if (phase === 'solving' && dt >= SOLVE_SPEED) {
     lastT = ts;
     const total = solveSteps.length;
-    for (let i = 0; i < 4 && stepIdx < total; i++, stepIdx++) {
+    let pathCount = pathMap.size;
+    for (let i = 0; i < 3 && stepIdx < total; i++, stepIdx++) {
       const s = solveSteps[stepIdx];
       const k = s.r * COLS + s.c;
       if (s.type === 'explore') {
@@ -249,8 +302,10 @@ function animate(ts) {
         const gg = Math.round(150 - prog * 130);
         const bb = Math.round(210 + prog * 45);
         exploreMap.set(k, `rgba(${rr},${gg},${bb},0.52)`);
+        playExplore(s.r, s.c);
       } else {
         pathMap.set(k, true);
+        playPath(pathCount++);
       }
     }
     if (stepIdx >= total) nextPhase();
