@@ -175,15 +175,17 @@ function initAudio() {
   wLFO.connect(wLFOGain); wLFOGain.connect(bp.frequency); wLFO.start();
 }
 
-// Overlay tap-to-unmute
-const overlay = document.getElementById('audioOverlay');
+// Auto-start audio — try immediately, then on first interaction
 function startAudio() {
   initAudio();
   if (audioCtx) audioCtx.resume().catch(() => {});
-  if (overlay) overlay.classList.add('hidden');
 }
-if (overlay) overlay.addEventListener('click', startAudio);
-document.addEventListener('click', startAudio, { once: true });
+// Try immediately (works when opened via file:// in most browsers)
+startAudio();
+// Fallback: also trigger on first any interaction (click, key, touch)
+['click','keydown','touchstart','pointerdown'].forEach(ev =>
+  document.addEventListener(ev, startAudio, { once: true, passive: true })
+);
 
 // ── Animation loop ───────────────────────────────────────────
 function animate() {
