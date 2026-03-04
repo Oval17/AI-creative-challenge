@@ -31,9 +31,18 @@ const STEPS_PER_FRAME = 3; // steps processed per tick (extra speed)
 const PALETTES = {
   bubble: ['#ff2d78','#ff8c00','#ffe600','#00f0ff'],
   quick:  ['#7b2fff','#00cfff','#00ffb8','#ffffff'],
+  merge:  ['#ff6b35','#f7c59f','#efefd0','#004e89'],
+  heap:   ['#e63946','#457b9d','#a8dadc','#f1faee'],
 };
 
-const ALGO_LABELS = { bubble: 'Bubble Sort', quick: 'Quick Sort' };
+const ALGO_LABELS = {
+  bubble: 'Bubble Sort',
+  quick:  'Quick Sort',
+  merge:  'Merge Sort',
+  heap:   'Heap Sort',
+};
+
+const ALGO_ORDER = ['bubble', 'quick', 'merge', 'heap'];
 
 // ── State ─────────────────────────────────────────────────────
 let arr         = [];
@@ -90,6 +99,57 @@ function* quickGen(a, lo = 0, hi = a.length - 1) {
   yield* quickGen(a, p + 1, hi);
 }
 
+// ── Merge sort generator ──────────────────────────────────────
+function* mergeGen(a, lo = 0, hi = a.length - 1) {
+  if (lo >= hi) return;
+  const mid = (lo + hi) >> 1;
+  yield* mergeGen(a, lo, mid);
+  yield* mergeGen(a, mid + 1, hi);
+  const left  = a.slice(lo, mid + 1);
+  const right = a.slice(mid + 1, hi + 1);
+  let i = 0, j = 0, k = lo;
+  while (i < left.length && j < right.length) {
+    yield { t: 'cmp', i: lo + i, j: mid + 1 + j };
+    const val = left[i] <= right[j] ? left[i++] : right[j++];
+    a[k] = val;
+    yield { t: 'put', i: k, v: val }; // overwrite at position k
+    k++;
+  }
+  while (i < left.length) { const val = left[i++]; a[k] = val; yield { t: 'put', i: k, v: val }; k++; }
+  while (j < right.length) { const val = right[j++]; a[k] = val; yield { t: 'put', i: k, v: val }; k++; }
+  for (let x = lo; x <= hi; x++) yield { t: 'done', i: x };
+}
+
+// ── Heap sort generator ───────────────────────────────────────
+function* heapGen(a) {
+  const n = a.length;
+
+  function* heapify(arr, n, root) {
+    let largest = root;
+    const l = 2 * root + 1;
+    const r = 2 * root + 2;
+    if (l < n) { yield { t: 'cmp', i: l, j: largest }; if (arr[l] > arr[largest]) largest = l; }
+    if (r < n) { yield { t: 'cmp', i: r, j: largest }; if (arr[r] > arr[largest]) largest = r; }
+    if (largest !== root) {
+      [arr[root], arr[largest]] = [arr[largest], arr[root]];
+      yield { t: 'swp', i: root, j: largest };
+      yield* heapify(arr, n, largest);
+    }
+  }
+
+  // Build max heap
+  for (let i = Math.floor(n / 2) - 1; i >= 0; i--) yield* heapify(a, n, i);
+
+  // Extract elements
+  for (let i = n - 1; i > 0; i--) {
+    [a[0], a[i]] = [a[i], a[0]];
+    yield { t: 'swp', i: 0, j: i };
+    yield { t: 'done', i };
+    yield* heapify(a, i, 0);
+  }
+  yield { t: 'done', i: 0 };
+}
+
 // ── Start a sort run ──────────────────────────────────────────
 function startSort(algo) {
   makeArray();
@@ -100,19 +160,27 @@ function startSort(algo) {
   lastStepT  = 0;
   phase      = 'sorting';
 
-  const a   = [...arr];
-  const gen = algo === 'bubble' ? bubbleGen(a) : quickGen(a);
+  const a = [...arr];
+  let gen;
+  if (algo === 'bubble')     gen = bubbleGen(a);
+  else if (algo === 'quick') gen = quickGen(a);
+  else if (algo === 'merge') gen = mergeGen(a);
+  else                       gen = heapGen(a);
+
   steps = [];
   for (const s of gen) steps.push(s);
 }
 
 // ── Apply one step ────────────────────────────────────────────
 function applyStep(step) {
-  if ((step.t === 'cmp' || step.t === 'swp') && ac && audioReady) {
+  if ((step.t === 'cmp' || step.t === 'swp' || step.t === 'put') && ac && audioReady) {
     beep(arr[step.i]);
   }
   if (step.t === 'swp') {
     [arr[step.i], arr[step.j]] = [arr[step.j], arr[step.i]];
+  }
+  if (step.t === 'put') {
+    arr[step.i] = step.v; // merge sort direct overwrite
   }
 }
 
@@ -188,13 +256,15 @@ function animate(ts) {
         applyStep(step);
         if (step.t === 'cmp')    { highlighted[step.i] = 'cmp';   highlighted[step.j] = 'cmp'; }
         if (step.t === 'swp')    { highlighted[step.i] = 'swp';   highlighted[step.j] = 'swp'; }
+        if (step.t === 'put')    { highlighted[step.i] = 'swp'; }
         if (step.t === 'pivot')  { highlighted[step.i] = 'pivot'; }
         if (step.t === 'done')   { highlighted[step.i] = 'done'; }
       } else {
         phase = 'done';
         highlighted = {};
         for (let i = 0; i < NUM_BARS; i++) highlighted[i] = 'done';
-        setTimeout(() => startSort(algoName === 'bubble' ? 'quick' : 'bubble'), 1400);
+        const nextIdx = (ALGO_ORDER.indexOf(algoName) + 1) % ALGO_ORDER.length;
+        setTimeout(() => startSort(ALGO_ORDER[nextIdx]), 1400);
         break;
       }
     }
