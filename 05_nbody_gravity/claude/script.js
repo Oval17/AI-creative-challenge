@@ -177,100 +177,129 @@ function draw() {
 }
 
 // ── Audio — space ambient + collision pings ───────────────────
-let ac = null, master = null, droneGain = null;
-let audioStarted = false;
-let totalKE = 0;
+let ac = null, master = null;
+let audioReady = false;
 
-function initAudio() {
-  if (audioStarted) return;
-  audioStarted = true;
-  ac = new (window.AudioContext || window.webkitAudioContext)();
+async function startAudio() {
+  if (audioReady) {
+    // If context suspended (browser policy), resume it
+    if (ac && ac.state === 'suspended') await ac.resume();
+    return;
+  }
 
-  master = ac.createGain();
-  master.gain.setValueAtTime(0, ac.currentTime);
-  master.gain.linearRampToValueAtTime(0.55, ac.currentTime + 3);
-  master.connect(ac.destination);
+  try {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    await ac.resume(); // Force resume immediately
 
-  // Sub-bass gravitational hum (frequency modulated by KE)
-  const sub = ac.createOscillator();
-  sub.type = 'sine';
-  sub.frequency.value = 42;
-  droneGain = ac.createGain();
-  droneGain.gain.value = 0.4;
-  sub.connect(droneGain);
-  droneGain.connect(master);
-  sub.start();
+    master = ac.createGain();
+    master.gain.setValueAtTime(0, ac.currentTime);
+    master.gain.linearRampToValueAtTime(0.55, ac.currentTime + 3);
+    master.connect(ac.destination);
 
-  // Mid harmonic
-  const mid = ac.createOscillator();
-  mid.type = 'triangle';
-  mid.frequency.value = 84.2;
-  const mg = ac.createGain(); mg.gain.value = 0.15;
-  mid.connect(mg); mg.connect(master); mid.start();
+    // Sub-bass gravitational hum
+    const sub = ac.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.value = 42;
+    const sg = ac.createGain(); sg.gain.value = 0.4;
+    sub.connect(sg); sg.connect(master); sub.start();
 
-  // Space wind (filtered noise)
-  const bufLen = ac.sampleRate * 3;
-  const buf = ac.createBuffer(1, bufLen, ac.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
-  const src = ac.createBufferSource();
-  src.buffer = buf; src.loop = true;
-  const bp = ac.createBiquadFilter();
-  bp.type = 'bandpass'; bp.frequency.value = 400; bp.Q.value = 0.5;
-  const wg = ac.createGain(); wg.gain.value = 0.04;
-  src.connect(bp); bp.connect(wg); wg.connect(master); src.start();
+    // Mid harmonic
+    const mid = ac.createOscillator();
+    mid.type = 'triangle';
+    mid.frequency.value = 84.2;
+    const mg = ac.createGain(); mg.gain.value = 0.15;
+    mid.connect(mg); mg.connect(master); mid.start();
 
-  // LFO breath
-  const lfo = ac.createOscillator();
-  const lg = ac.createGain(); lg.gain.value = 0.06;
-  lfo.frequency.value = 0.07;
-  lfo.connect(lg); lg.connect(master.gain); lfo.start();
+    // High shimmer
+    const high = ac.createOscillator();
+    high.type = 'sine';
+    high.frequency.value = 336;
+    const hg = ac.createGain(); hg.gain.value = 0.06;
+    const hLFO = ac.createOscillator();
+    const hLG = ac.createGain(); hLG.gain.value = 0.05;
+    hLFO.frequency.value = 0.3;
+    hLFO.connect(hLG); hLG.connect(hg.gain);
+    high.connect(hg); hg.connect(master); high.start(); hLFO.start();
+
+    // Space wind (filtered noise)
+    const bufLen = ac.sampleRate * 4;
+    const buf = ac.createBuffer(1, bufLen, ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+    const src = ac.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 350; bp.Q.value = 0.4;
+    const wg = ac.createGain(); wg.gain.value = 0.05;
+    src.connect(bp); bp.connect(wg); wg.connect(master); src.start();
+
+    // LFO breath on master
+    const lfo = ac.createOscillator();
+    const lg = ac.createGain(); lg.gain.value = 0.07;
+    lfo.frequency.value = 0.08;
+    lfo.connect(lg); lg.connect(master.gain); lfo.start();
+
+    audioReady = true;
+  } catch(e) {
+    console.warn('Audio init failed:', e);
+  }
 }
 
 // Collision/close-encounter ping sound
 let lastPingTime = 0;
 function triggerPing(freq, intensity) {
-  if (!ac || !audioStarted) return;
+  if (!ac || !audioReady || ac.state !== 'running') return;
   const now = ac.currentTime;
-  if (now - lastPingTime < 0.08) return; // throttle to 12/sec max
+  if (now - lastPingTime < 0.09) return;
   lastPingTime = now;
 
   const osc = ac.createOscillator();
   const env = ac.createGain();
   osc.type = 'sine';
   osc.frequency.setValueAtTime(freq, now);
-  osc.frequency.exponentialRampToValueAtTime(freq * 0.3, now + 0.35);
-  env.gain.setValueAtTime(intensity * 0.18, now);
-  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.25, now + 0.4);
+  env.gain.setValueAtTime(intensity * 0.2, now);
+  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
   osc.connect(env); env.connect(master);
-  osc.start(now); osc.stop(now + 0.35);
+  osc.start(now); osc.stop(now + 0.4);
+
+  // Second harmonic ping
+  const osc2 = ac.createOscillator();
+  const env2 = ac.createGain();
+  osc2.type = 'triangle';
+  osc2.frequency.setValueAtTime(freq * 1.5, now);
+  osc2.frequency.exponentialRampToValueAtTime(freq * 0.4, now + 0.25);
+  env2.gain.setValueAtTime(intensity * 0.08, now);
+  env2.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+  osc2.connect(env2); env2.connect(master);
+  osc2.start(now); osc2.stop(now + 0.25);
 }
 
 // Detect close encounters and ping
 let closePingCooldown = 0;
 function detectPings() {
   if (closePingCooldown > 0) { closePingCooldown--; return; }
-  const threshold = SOFTENING * 1.8;
+  const threshold = SOFTENING * 2.0;
   const t2 = threshold * threshold;
-  // Sample random pairs (not all pairs — too slow)
-  for (let k = 0; k < 40; k++) {
+  for (let k = 0; k < 50; k++) {
     const i = Math.floor(Math.random() * N);
     const j = Math.floor(Math.random() * N);
     if (i === j) continue;
     const dx = px[j] - px[i], dy = py[j] - py[i];
     if (dx*dx + dy*dy < t2) {
       const speed = Math.sqrt(pvx[i]*pvx[i] + pvy[i]*pvy[i]);
-      const freq = 200 + speed * 80;
-      triggerPing(Math.min(freq, 1200), Math.min(speed / 3, 1));
-      closePingCooldown = 3;
+      const freq = 180 + speed * 90;
+      triggerPing(Math.min(freq, 1400), Math.min(speed / 2.5, 1));
+      closePingCooldown = 2;
       break;
     }
   }
 }
 
-initAudio();
-['click','keydown','touchstart','pointerdown'].forEach(ev =>
-  document.addEventListener(ev, initAudio, { once: true, passive: true })
+// Try auto-start, then ensure it fires on first interaction
+startAudio();
+['click','keydown','touchstart','pointerdown','mousemove'].forEach(ev =>
+  document.addEventListener(ev, () => startAudio(), { once: true, passive: true })
 );
 
 // ── Respawn on collapse ───────────────────────────────────────
