@@ -210,9 +210,18 @@ function initAudio() {
   lfo.start();
 }
 
-// Auto-start audio on first user interaction or after short delay
-setTimeout(() => { try { initAudio(); } catch(e) {} }, 800);
-document.addEventListener('click', initAudio, { once: true });
+// ── Audio overlay ────────────────────────────────────────────
+const overlay = document.getElementById('audioOverlay');
+function startAudio() {
+  initAudio();
+  if (audioCtx) {
+    audioCtx.resume().catch(() => {});
+  }
+  overlay.classList.add('hidden');
+}
+overlay.addEventListener('click', startAudio);
+// Also try on any body click (fallback)
+document.addEventListener('click', startAudio, { once: true });
 
 // ── Init boids ───────────────────────────────────────────────
 const boids = Array.from({ length: NUM_BOIDS }, () => new Boid());
