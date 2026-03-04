@@ -19,200 +19,253 @@ const CW = 1080, CH = 1350;
 canvas.width = CW; canvas.height = CH;
 
 // ── Config ───────────────────────────────────────────────────
-const N          = 100;
-const G          = 80;        // gravitational constant (tuned for drama)
-const SOFTENING  = 18;        // avoid singularity
-const DT         = 0.016;     // time step
-const TRAIL_LEN  = 55;
-const DAMPING    = 0.9998;    // very slight energy loss
+const N         = 300;
+const G         = 120;
+const SOFTENING = 22;
+const DT        = 0.032;   // faster timestep
+const TRAIL_LEN = 30;
+const DAMPING   = 0.9995;
 
-// ── Particle colours ─────────────────────────────────────────
+// Grid-based force approximation — only interact with nearby cells
+const CELL_SIZE = 150;
+const GCOLS = Math.ceil(CW / CELL_SIZE);
+const GROWS = Math.ceil(CH / CELL_SIZE);
+
 const STAR_COLORS = [
   '#ffffff', '#aad4ff', '#ffd8a0', '#ffaaaa',
   '#aaffdd', '#c8a0ff', '#80dfff', '#ffe066',
 ];
 
-// ── Particle class ───────────────────────────────────────────
-class Body {
-  constructor() {
-    // Spawn in two counter-rotating clusters for instant orbital motion
-    const cluster = Math.random() < 0.5 ? 0 : 1;
-    const cx = cluster === 0 ? CW * 0.35 : CW * 0.65;
+// ── Bodies stored as flat arrays for speed ───────────────────
+const px  = new Float32Array(N); // x
+const py  = new Float32Array(N); // y
+const pvx = new Float32Array(N); // vx
+const pvy = new Float32Array(N); // vy
+const pm  = new Float32Array(N); // mass
+const pr  = new Float32Array(N); // radius
+const pc  = new Array(N);        // colour string
+const trails = Array.from({length: N}, () => []);
+
+function initBodies() {
+  for (let i = 0; i < N; i++) {
+    const cluster = i < N / 2 ? 0 : 1;
+    const cx = cluster === 0 ? CW * 0.33 : CW * 0.67;
     const cy = CH * 0.5;
     const angle = Math.random() * Math.PI * 2;
-    const r = 80 + Math.random() * 200;
-
-    this.x = cx + Math.cos(angle) * r;
-    this.y = cy + Math.sin(angle) * r;
-
-    // Orbital velocity perpendicular to radius, opposing clusters
-    const orbSpeed = 0.6 + Math.random() * 0.8;
+    const r = 60 + Math.random() * 240;
+    px[i] = cx + Math.cos(angle) * r;
+    py[i] = cy + Math.sin(angle) * r;
+    const orbSpeed = 0.7 + Math.random() * 1.1;
     const dir = cluster === 0 ? 1 : -1;
-    this.vx = -Math.sin(angle) * orbSpeed * dir + (Math.random() - 0.5) * 0.4;
-    this.vy =  Math.cos(angle) * orbSpeed * dir + (Math.random() - 0.5) * 0.4;
+    pvx[i] = -Math.sin(angle) * orbSpeed * dir + (Math.random()-0.5) * 0.5;
+    pvy[i] =  Math.cos(angle) * orbSpeed * dir + (Math.random()-0.5) * 0.5;
+    pm[i]  = 0.5 + Math.random() * 1.8;
+    pr[i]  = 1.0 + pm[i] * 0.6;
+    pc[i]  = STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)];
+  }
+}
+initBodies();
 
-    this.mass = 0.6 + Math.random() * 2.2;
-    this.r    = 1.2 + this.mass * 0.7;
-    this.hue  = 180 + Math.random() * 200;
-    this.color = STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)];
-    this.trail = [];
+// ── Grid-based N-body (O(n * k) where k = neighbours per cell) ──
+const ax = new Float32Array(N);
+const ay = new Float32Array(N);
+const grid = [];
+
+function buildGrid() {
+  grid.length = 0;
+  for (let i = 0; i < GCOLS * GROWS; i++) grid[i] = [];
+  for (let i = 0; i < N; i++) {
+    const cx = Math.max(0, Math.min(GCOLS-1, Math.floor(px[i] / CELL_SIZE)));
+    const cy = Math.max(0, Math.min(GROWS-1, Math.floor(py[i] / CELL_SIZE)));
+    grid[cy * GCOLS + cx].push(i);
   }
 }
 
-// ── Init ─────────────────────────────────────────────────────
-let bodies = Array.from({ length: N }, () => new Body());
-
-// ── Physics step ─────────────────────────────────────────────
 function step() {
+  buildGrid();
   const soft2 = SOFTENING * SOFTENING;
+  ax.fill(0); ay.fill(0);
 
-  // Reset accelerations
-  for (const b of bodies) { b.ax = 0; b.ay = 0; }
+  for (let gi = 0; gi < N; gi++) {
+    const gcx = Math.max(0, Math.min(GCOLS-1, Math.floor(px[gi] / CELL_SIZE)));
+    const gcy = Math.max(0, Math.min(GROWS-1, Math.floor(py[gi] / CELL_SIZE)));
 
-  // O(n²) gravity
-  for (let i = 0; i < bodies.length; i++) {
-    const bi = bodies[i];
-    for (let j = i + 1; j < bodies.length; j++) {
-      const bj = bodies[j];
-      const dx = bj.x - bi.x;
-      const dy = bj.y - bi.y;
-      const d2 = dx * dx + dy * dy + soft2;
-      const d  = Math.sqrt(d2);
-      const f  = G / d2;
-      const fx = f * dx / d;
-      const fy = f * dy / d;
-      bi.ax += fx * bj.mass;
-      bi.ay += fy * bj.mass;
-      bj.ax -= fx * bi.mass;
-      bj.ay -= fy * bi.mass;
+    // Check 3x3 neighbourhood of cells
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = gcx + dx, ny = gcy + dy;
+        if (nx < 0 || ny < 0 || nx >= GCOLS || ny >= GROWS) continue;
+        const cell = grid[ny * GCOLS + nx];
+        for (let k = 0; k < cell.length; k++) {
+          const gj = cell[k];
+          if (gj <= gi) continue;
+          const ddx = px[gj] - px[gi];
+          const ddy = py[gj] - py[gi];
+          const d2 = ddx*ddx + ddy*ddy + soft2;
+          const inv_d = 1.0 / Math.sqrt(d2);
+          const f = G * inv_d * inv_d * inv_d;
+          const fx = f * ddx, fy = f * ddy;
+          ax[gi] += fx * pm[gj];
+          ay[gi] += fy * pm[gj];
+          ax[gj] -= fx * pm[gi];
+          ay[gj] -= fy * pm[gi];
+        }
+      }
     }
   }
 
-  // Integrate & record trails
-  for (const b of bodies) {
-    b.vx = (b.vx + b.ax * DT) * DAMPING;
-    b.vy = (b.vy + b.ay * DT) * DAMPING;
-    b.x += b.vx * DT * 60;
-    b.y += b.vy * DT * 60;
+  // Integrate
+  for (let i = 0; i < N; i++) {
+    pvx[i] = (pvx[i] + ax[i] * DT) * DAMPING;
+    pvy[i] = (pvy[i] + ay[i] * DT) * DAMPING;
+    px[i] += pvx[i] * DT * 60;
+    py[i] += pvy[i] * DT * 60;
 
-    b.trail.push({ x: b.x, y: b.y });
-    if (b.trail.length > TRAIL_LEN) b.trail.shift();
+    trails[i].push({ x: px[i], y: py[i] });
+    if (trails[i].length > TRAIL_LEN) trails[i].shift();
 
-    // Soft boundary — bounce with dampening if far out
-    const margin = 40;
-    if (b.x < -margin)     { b.x = -margin;      b.vx *= -0.5; }
-    if (b.x > CW + margin) { b.x = CW + margin;  b.vx *= -0.5; }
-    if (b.y < -margin)     { b.y = -margin;       b.vy *= -0.5; }
-    if (b.y > CH + margin) { b.y = CH + margin;   b.vy *= -0.5; }
+    const margin = 60;
+    if (px[i] < -margin)     { px[i] = -margin;      pvx[i] *= -0.4; }
+    if (px[i] > CW + margin) { px[i] = CW + margin;  pvx[i] *= -0.4; }
+    if (py[i] < -margin)     { py[i] = -margin;       pvy[i] *= -0.4; }
+    if (py[i] > CH + margin) { py[i] = CH + margin;   pvy[i] *= -0.4; }
   }
 }
 
 // ── Draw ─────────────────────────────────────────────────────
 function draw() {
-  // Fade background (trail effect)
-  ctx.fillStyle = 'rgba(10,10,10,0.18)';
+  ctx.fillStyle = 'rgba(10,10,10,0.22)';
   ctx.fillRect(0, 0, CW, CH);
 
-  for (const b of bodies) {
-    const n = b.trail.length;
+  for (let i = 0; i < N; i++) {
+    const trail = trails[i];
+    const n = trail.length;
     if (n < 2) continue;
 
     // Trail
     ctx.save();
-    ctx.shadowBlur = 0;
-    for (let i = 1; i < n; i++) {
-      const t = i / n;
+    for (let t = 1; t < n; t++) {
+      const f = t / n;
+      ctx.globalAlpha = f * f * 0.45;
+      ctx.strokeStyle = pc[i];
+      ctx.lineWidth   = f * pr[i] * 1.1;
       ctx.beginPath();
-      ctx.moveTo(b.trail[i - 1].x, b.trail[i - 1].y);
-      ctx.lineTo(b.trail[i].x, b.trail[i].y);
-      ctx.strokeStyle = b.color.replace(')', `,${t * t * 0.55})`).replace('rgb', 'rgba').replace('#', 'rgba(').replace('rgba(', 'rgba(');
-
-      // Build rgba from hex color
-      const alpha = t * t * 0.5;
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = b.color;
-      ctx.lineWidth = t * b.r * 0.9;
+      ctx.moveTo(trail[t-1].x, trail[t-1].y);
+      ctx.lineTo(trail[t].x, trail[t].y);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    // Glow core
+    // Star core with glow
     ctx.save();
-    ctx.shadowColor = b.color;
-    ctx.shadowBlur  = b.r * 6;
+    ctx.shadowColor = pc[i];
+    ctx.shadowBlur  = pr[i] * 8;
     ctx.fillStyle   = '#ffffff';
     ctx.beginPath();
-    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.arc(px[i], py[i], pr[i], 0, Math.PI * 2);
     ctx.fill();
-
-    // Coloured halo
-    ctx.shadowBlur = b.r * 14;
-    ctx.fillStyle  = b.color;
-    ctx.globalAlpha = 0.6;
+    ctx.shadowBlur  = pr[i] * 20;
+    ctx.fillStyle   = pc[i];
+    ctx.globalAlpha = 0.5;
     ctx.beginPath();
-    ctx.arc(b.x, b.y, b.r * 1.4, 0, Math.PI * 2);
+    ctx.arc(px[i], py[i], pr[i] * 1.6, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
     ctx.restore();
   }
 }
 
-// ── Occasional gentle re-injection ───────────────────────────
-// If energy collapses (all merged) respawn scattered bodies
-let frameNum = 0;
-function maybeRespawn() {
-  // Every 600 frames check if spread is too small
-  if (frameNum % 600 !== 0) return;
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const b of bodies) {
-    if (b.x < minX) minX = b.x;
-    if (b.x > maxX) maxX = b.x;
-    if (b.y < minY) minY = b.y;
-    if (b.y > maxY) maxY = b.y;
-  }
-  if (maxX - minX < 80 && maxY - minY < 80) {
-    // Gentle reinit — spread them out again
-    bodies = Array.from({ length: N }, () => new Body());
-  }
-}
-
-// ── Ambient audio ─────────────────────────────────────────────
+// ── Audio — space ambient + collision pings ───────────────────
+let ac = null, master = null, droneGain = null;
 let audioStarted = false;
+let totalKE = 0;
+
 function initAudio() {
   if (audioStarted) return;
   audioStarted = true;
-  const ac = new (window.AudioContext || window.webkitAudioContext)();
-  const master = ac.createGain();
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+
+  master = ac.createGain();
   master.gain.setValueAtTime(0, ac.currentTime);
-  master.gain.linearRampToValueAtTime(0.4, ac.currentTime + 3);
+  master.gain.linearRampToValueAtTime(0.55, ac.currentTime + 3);
   master.connect(ac.destination);
 
-  // Deep space drone
-  [40, 80.1, 160.2].forEach((freq, i) => {
-    const osc = ac.createOscillator();
-    osc.type = i === 0 ? 'sine' : 'triangle';
-    osc.frequency.value = freq;
-    const g = ac.createGain(); g.gain.value = i === 0 ? 0.5 : 0.2;
-    osc.connect(g); g.connect(master); osc.start();
-  });
+  // Sub-bass gravitational hum (frequency modulated by KE)
+  const sub = ac.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.value = 42;
+  droneGain = ac.createGain();
+  droneGain.gain.value = 0.4;
+  sub.connect(droneGain);
+  droneGain.connect(master);
+  sub.start();
 
-  // Cosmic shimmer – filtered noise
-  const buf = ac.createBuffer(1, ac.sampleRate * 4, ac.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  const noise = ac.createBufferSource();
-  noise.buffer = buf; noise.loop = true;
-  const hp = ac.createBiquadFilter();
-  hp.type = 'highpass'; hp.frequency.value = 800;
-  const ng = ac.createGain(); ng.gain.value = 0.03;
-  noise.connect(hp); hp.connect(ng); ng.connect(master); noise.start();
+  // Mid harmonic
+  const mid = ac.createOscillator();
+  mid.type = 'triangle';
+  mid.frequency.value = 84.2;
+  const mg = ac.createGain(); mg.gain.value = 0.15;
+  mid.connect(mg); mg.connect(master); mid.start();
 
-  // Slow LFO on master volume for breathing effect
+  // Space wind (filtered noise)
+  const bufLen = ac.sampleRate * 3;
+  const buf = ac.createBuffer(1, bufLen, ac.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource();
+  src.buffer = buf; src.loop = true;
+  const bp = ac.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 400; bp.Q.value = 0.5;
+  const wg = ac.createGain(); wg.gain.value = 0.04;
+  src.connect(bp); bp.connect(wg); wg.connect(master); src.start();
+
+  // LFO breath
   const lfo = ac.createOscillator();
-  const lg = ac.createGain(); lg.gain.value = 0.08;
-  lfo.frequency.value = 0.06;
+  const lg = ac.createGain(); lg.gain.value = 0.06;
+  lfo.frequency.value = 0.07;
   lfo.connect(lg); lg.connect(master.gain); lfo.start();
+}
+
+// Collision/close-encounter ping sound
+let lastPingTime = 0;
+function triggerPing(freq, intensity) {
+  if (!ac || !audioStarted) return;
+  const now = ac.currentTime;
+  if (now - lastPingTime < 0.08) return; // throttle to 12/sec max
+  lastPingTime = now;
+
+  const osc = ac.createOscillator();
+  const env = ac.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, now);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.3, now + 0.35);
+  env.gain.setValueAtTime(intensity * 0.18, now);
+  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+  osc.connect(env); env.connect(master);
+  osc.start(now); osc.stop(now + 0.35);
+}
+
+// Detect close encounters and ping
+let closePingCooldown = 0;
+function detectPings() {
+  if (closePingCooldown > 0) { closePingCooldown--; return; }
+  const threshold = SOFTENING * 1.8;
+  const t2 = threshold * threshold;
+  // Sample random pairs (not all pairs — too slow)
+  for (let k = 0; k < 40; k++) {
+    const i = Math.floor(Math.random() * N);
+    const j = Math.floor(Math.random() * N);
+    if (i === j) continue;
+    const dx = px[j] - px[i], dy = py[j] - py[i];
+    if (dx*dx + dy*dy < t2) {
+      const speed = Math.sqrt(pvx[i]*pvx[i] + pvy[i]*pvy[i]);
+      const freq = 200 + speed * 80;
+      triggerPing(Math.min(freq, 1200), Math.min(speed / 3, 1));
+      closePingCooldown = 3;
+      break;
+    }
+  }
 }
 
 initAudio();
@@ -220,17 +273,25 @@ initAudio();
   document.addEventListener(ev, initAudio, { once: true, passive: true })
 );
 
+// ── Respawn on collapse ───────────────────────────────────────
+let frameNum = 0;
+function maybeRespawn() {
+  if (frameNum % 400 !== 0) return;
+  let spread = 0;
+  for (let i = 0; i < N; i++) spread = Math.max(spread, Math.abs(px[i] - CW/2), Math.abs(py[i] - CH/2));
+  if (spread < 60) initBodies();
+}
+
 // ── Loop ─────────────────────────────────────────────────────
 function animate() {
   step();
-  step(); // two physics steps per frame for stability
+  detectPings();
   draw();
   frameNum++;
   maybeRespawn();
   requestAnimationFrame(animate);
 }
 
-// Clear canvas first
 ctx.fillStyle = '#0a0a0a';
 ctx.fillRect(0, 0, CW, CH);
 requestAnimationFrame(animate);
