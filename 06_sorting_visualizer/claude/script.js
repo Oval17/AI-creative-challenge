@@ -24,7 +24,8 @@ const BAR_GAP  = 4;
 const BAR_W    = Math.floor((CW - (NUM_BARS + 1) * BAR_GAP) / NUM_BARS);
 const MAX_H    = CH - 160;
 const BASE_Y   = CH - 60;
-const STEP_MS  = 36;
+const STEP_MS  = 8;   // ms between animation frames (faster)
+const STEPS_PER_FRAME = 3; // steps processed per tick (extra speed)
 
 // ── Palettes per algorithm ────────────────────────────────────
 const PALETTES = {
@@ -174,23 +175,28 @@ function draw() {
 function animate(ts) {
   if (phase === 'sorting' && ts - lastStepT >= STEP_MS) {
     lastStepT = ts;
-    // Retain 'done' highlights, clear others
-    const keep = {};
-    for (const k in highlighted) { if (highlighted[k] === 'done') keep[k] = 'done'; }
-    highlighted = keep;
 
-    if (stepIdx < steps.length) {
-      const step = steps[stepIdx++];
-      applyStep(step);
-      if (step.t === 'cmp')   { highlighted[step.i] = 'cmp';  highlighted[step.j] = 'cmp'; }
-      if (step.t === 'swp')   { highlighted[step.i] = 'swp';  highlighted[step.j] = 'swp'; }
-      if (step.t === 'pivot') { highlighted[step.i] = 'pivot'; }
-      if (step.t === 'done')  { highlighted[step.i] = 'done'; }
-    } else {
-      phase = 'done';
-      highlighted = {};
-      for (let i = 0; i < NUM_BARS; i++) highlighted[i] = 'done';
-      setTimeout(() => startSort(algoName === 'bubble' ? 'quick' : 'bubble'), 1600);
+    // Process multiple steps per frame for extra speed
+    for (let f = 0; f < STEPS_PER_FRAME; f++) {
+      // Retain 'done' highlights, clear others
+      const keep = {};
+      for (const k in highlighted) { if (highlighted[k] === 'done') keep[k] = 'done'; }
+      highlighted = keep;
+
+      if (stepIdx < steps.length) {
+        const step = steps[stepIdx++];
+        applyStep(step);
+        if (step.t === 'cmp')    { highlighted[step.i] = 'cmp';   highlighted[step.j] = 'cmp'; }
+        if (step.t === 'swp')    { highlighted[step.i] = 'swp';   highlighted[step.j] = 'swp'; }
+        if (step.t === 'pivot')  { highlighted[step.i] = 'pivot'; }
+        if (step.t === 'done')   { highlighted[step.i] = 'done'; }
+      } else {
+        phase = 'done';
+        highlighted = {};
+        for (let i = 0; i < NUM_BARS; i++) highlighted[i] = 'done';
+        setTimeout(() => startSort(algoName === 'bubble' ? 'quick' : 'bubble'), 1400);
+        break;
+      }
     }
   }
 
