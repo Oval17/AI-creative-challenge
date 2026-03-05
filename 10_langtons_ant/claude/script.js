@@ -18,18 +18,18 @@ const ctx    = canvas.getContext('2d');
 const CW = 1060, CH = 1340;
 canvas.width = CW; canvas.height = CH;
 
-// ── Audio ──────────────────────────────────────────────────────
+// ── Audio — auto-start ─────────────────────────────────────────
 let ac = null;
 let stepCount = 0;
 
-const overlay = document.getElementById('startOverlay');
-overlay.addEventListener('click', () => {
-  overlay.classList.add('hidden');
-  startAudio();
-});
-
 function startAudio() {
-  ac = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    buildAudio();
+  } catch(e) {}
+}
+function buildAudio() {
   const master = ac.createGain();
   master.gain.value = 0.10;
   master.connect(ac.destination);
@@ -231,5 +231,12 @@ function animate() {
   render();
   requestAnimationFrame(animate);
 }
+
+// Auto-start audio + click fallback
+startAudio();
+document.addEventListener('click', () => {
+  if (!ac) startAudio();
+  else if (ac.state === 'suspended') ac.resume();
+}, { once: false });
 
 requestAnimationFrame(animate);
