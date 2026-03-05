@@ -12,74 +12,63 @@ function scaleWrapper() {
 scaleWrapper();
 window.addEventListener('resize', scaleWrapper);
 
-// ── Canvas ────────────────────────────────────────────────────
+// ── Canvas ─────────────────────────────────────────────────────
 const canvas = document.getElementById('simCanvas');
 const ctx    = canvas.getContext('2d');
 const CW = 1060, CH = 1340;
 canvas.width = CW; canvas.height = CH;
 
-// ── Audio ─────────────────────────────────────────────────────
+// ── Audio ──────────────────────────────────────────────────────
 let ac = null;
-async function initAudio() {
-  if (ac) return;
-  ac = new (window.AudioContext || window.webkitAudioContext)();
-  await ac.resume();
-  startAmbient();
-}
-['click','keydown','touchstart','pointerdown'].forEach(e =>
-  document.addEventListener(e, initAudio, { once: true, passive: true })
-);
-setTimeout(() => initAudio(), 300);
+const overlay = document.getElementById('startOverlay');
+overlay.addEventListener('click', () => {
+  overlay.classList.add('hidden');
+  startAudio();
+});
 
-function startAmbient() {
-  if (!ac) return;
+function startAudio() {
+  ac = new (window.AudioContext || window.webkitAudioContext)();
   const master = ac.createGain();
-  master.gain.value = 0.10;
+  master.gain.value = 0.12;
   master.connect(ac.destination);
 
-  // Deep evolving pad: 4 detuned sines + slow modulation
-  const baseFreqs = [55, 82.5, 110, 165, 220];
-  baseFreqs.forEach((f, i) => {
+  // Slow evolving organic pad
+  const freqs = [55, 82.41, 110, 130.81, 164.81];
+  freqs.forEach((f, i) => {
     const osc  = ac.createOscillator();
     const gain = ac.createGain();
-    osc.type = 'sine';
+    const lfo  = ac.createOscillator();
+    const lfoG = ac.createGain();
+    osc.type = i % 2 === 0 ? 'sine' : 'triangle';
     osc.frequency.value = f;
-    gain.gain.value = 0.2 / (i + 1);
-
-    // Slow vibrato
-    const vib     = ac.createOscillator();
-    const vibGain = ac.createGain();
-    vib.frequency.value = 0.05 + i * 0.03;
-    vibGain.gain.value  = f * 0.008;
-    vib.connect(vibGain);
-    vibGain.connect(osc.frequency);
-    vib.start();
-
-    osc.connect(gain); gain.connect(master);
-    osc.start();
+    gain.gain.value = 0.18 / (i + 1);
+    lfo.frequency.value = 0.04 + i * 0.02;
+    lfoG.gain.value = f * 0.015;
+    lfo.connect(lfoG); lfoG.connect(osc.frequency); lfo.start();
+    osc.connect(gain); gain.connect(master); osc.start();
   });
 
-  // Slow bubbling texture: random plucks every 1.5-4s
-  function bubble() {
-    if (!ac) return;
-    const now = ac.currentTime;
-    const osc = ac.createOscillator();
-    const env = ac.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 200 + Math.random() * 600;
-    env.gain.setValueAtTime(0, now);
-    env.gain.linearRampToValueAtTime(0.06, now + 0.02);
-    env.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
-    osc.connect(env); env.connect(master);
-    osc.start(now); osc.stop(now + 1.3);
-    setTimeout(bubble, 1500 + Math.random() * 2500);
-  }
-  bubble();
+  // Slow filter sweep for evolving texture
+  const noiseBuffer = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
+  const noise  = ac.createBufferSource();
+  const filter = ac.createBiquadFilter();
+  const nGain  = ac.createGain();
+  noise.buffer = noiseBuffer;
+  noise.loop   = true;
+  filter.type  = 'bandpass';
+  filter.frequency.value = 200;
+  filter.frequency.linearRampToValueAtTime(800, ac.currentTime + 20);
+  filter.Q.value = 8;
+  nGain.gain.value = 0.03;
+  noise.connect(filter); filter.connect(nGain); nGain.connect(master);
+  noise.start();
 }
 
-// ── Gray-Scott grid ───────────────────────────────────────────
-// Use SCALE=3 for sharper, more detailed patterns
-const SCALE = 3;
+// ── Gray-Scott simulation ──────────────────────────────────────
+// Grid at 2x pixel density for detail
+const SCALE = 2;
 const GW = Math.floor(CW / SCALE);
 const GH = Math.floor(CH / SCALE);
 const N  = GW * GH;
@@ -89,38 +78,32 @@ let B  = new Float32Array(N);
 let nA = new Float32Array(N);
 let nB = new Float32Array(N);
 
-// Parameters — "worms" preset: striking neon tentacle patterns
-const dA = 1.0;
-const dB = 0.5;
-const f  = 0.054;
-const k  = 0.063;
+// "coral" preset — well known to produce beautiful organic blobs
+const DA = 1.0, DB = 0.5;
+const F  = 0.055, K = 0.062;
 
 function init() {
   for (let i = 0; i < N; i++) { A[i] = 1; B[i] = 0; }
-  // Seed a central ring + scattered patches
-  const cx = Math.floor(GW / 2), cy = Math.floor(GH / 2);
-  for (let dy = -8; dy <= 8; dy++) {
-    for (let dx = -8; dx <= 8; dx++) {
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist >= 5 && dist <= 8) {
-        const r = cy+dy, c = cx+dx;
-        if (r>=0&&r<GH&&c>=0&&c<GW) { A[r*GW+c]=0.5; B[r*GW+c]=0.25; }
+
+  // Drop MANY seeds — whole canvas covered quickly
+  const seeds = 60;
+  for (let s = 0; s < seeds; s++) {
+    const cx = 5 + Math.floor(Math.random() * (GW - 10));
+    const cy = 5 + Math.floor(Math.random() * (GH - 10));
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const r = cy + dy, c = cx + dx;
+        if (r >= 0 && r < GH && c >= 0 && c < GW) {
+          const i = r * GW + c;
+          A[i] = 0.5 + (Math.random() - 0.5) * 0.1;
+          B[i] = 0.25 + (Math.random() - 0.5) * 0.1;
+        }
       }
-    }
-  }
-  // More scattered seeds
-  for (let s = 0; s < 30; s++) {
-    const sc = 4 + Math.floor(Math.random()*(GW-8));
-    const sr = 4 + Math.floor(Math.random()*(GH-8));
-    for (let dy=-3;dy<=3;dy++) for(let dx=-3;dx<=3;dx++) {
-      const r=sr+dy, c=sc+dx;
-      if(r>=0&&r<GH&&c>=0&&c<GW){A[r*GW+c]=0.5+Math.random()*0.1;B[r*GW+c]=0.25+Math.random()*0.1;}
     }
   }
 }
 
-// ── Optimised step (inline Laplacian) ─────────────────────────
-const DT = 1.0;
+// Fast Laplacian with pre-multiplied weights
 function step() {
   for (let y = 0; y < GH; y++) {
     const yn = ((y - 1 + GH) % GH) * GW;
@@ -129,64 +112,73 @@ function step() {
     for (let x = 0; x < GW; x++) {
       const xw = (x - 1 + GW) % GW;
       const xe = (x + 1) % GW;
-      const i = yc + x;
-      const a = A[i], b = B[i];
-      const la = A[yn+x] + A[ys+x] + A[yc+xw] + A[yc+xe] - 4*a;
-      const lb = B[yn+x] + B[ys+x] + B[yc+xw] + B[yc+xe] - 4*b;
+      const i  = yc + x;
+      const a  = A[i], b = B[i];
+      // 9-point weighted Laplacian (smoother, more organic)
+      const lA =
+        0.05*(A[yn+xw]+A[yn+xe]+A[ys+xw]+A[ys+xe]) +
+        0.20*(A[yn+x]+A[ys+x]+A[yc+xw]+A[yc+xe]) -
+        a;
+      const lB =
+        0.05*(B[yn+xw]+B[yn+xe]+B[ys+xw]+B[ys+xe]) +
+        0.20*(B[yn+x]+B[ys+x]+B[yc+xw]+B[yc+xe]) -
+        b;
       const ab2 = a * b * b;
-      nA[i] = Math.max(0, Math.min(1, a + DT*(dA*la - ab2 + f*(1-a))));
-      nB[i] = Math.max(0, Math.min(1, b + DT*(dB*lb + ab2 - (k+f)*b)));
+      nA[i] = Math.min(1, Math.max(0, a + DA * lA - ab2 + F * (1 - a)));
+      nB[i] = Math.min(1, Math.max(0, b + DB * lB + ab2 - (K + F) * b));
     }
   }
-  const tA=A; A=nA; nA=tA;
-  const tB=B; B=nB; nB=tB;
+  let t; t = A; A = nA; nA = t;
+      t = B; B = nB; nB = t;
 }
 
-// ── Render — vivid neon palette ───────────────────────────────
+// ── Render — vivid cycling neon ────────────────────────────────
 const imgData = ctx.createImageData(CW, CH);
 const buf     = imgData.data;
-
-// Use (A - B) as the signal: ranges from -1 to 1, centred at ~1 where no B
-// Where B is high (pattern), A-B is low → map to vivid neon
-// Where B=0 (background), A≈1, A-B≈1 → dark background
-function neonColor(a, b) {
-  // t=0 means pattern (B high), t=1 means background (B low)
-  const t = Math.min(1, Math.max(0, a - b));  // 0=pattern,1=background
-  const p = 1 - t; // p=1 = full pattern, p=0 = background
-
-  // Gamma boost for contrast
-  const p2 = Math.pow(p, 0.7);
-
-  // Vibrant neon: dark bg → deep purple → hot magenta → cyan → white
-  let r, g, bv;
-  if (p2 < 0.25) {
-    const s = p2 / 0.25;
-    r = Math.round(s * 120);   g = 0;               bv = Math.round(s * 80);
-  } else if (p2 < 0.5) {
-    const s = (p2 - 0.25) / 0.25;
-    r = Math.round(120 + s * 135); g = 0;            bv = Math.round(80 + s * 175);
-  } else if (p2 < 0.75) {
-    const s = (p2 - 0.5) / 0.25;
-    r = Math.round(255 - s * 255); g = Math.round(s * 255); bv = 255;
-  } else {
-    const s = (p2 - 0.75) / 0.25;
-    r = 0;  g = 255; bv = Math.round(255 - s * 55);
-  }
-  return [r, g, bv];
-}
+let   tick    = 0;
 
 function render() {
+  tick++;
+  const hueOffset = tick * 0.4; // slow hue cycling
+
   for (let gy = 0; gy < GH; gy++) {
     for (let gx = 0; gx < GW; gx++) {
-      const i = gy * GW + gx;
-      const [r, g, bv] = neonColor(A[i], B[i]);
-      const pyBase = gy * SCALE, pxBase = gx * SCALE;
+      const i  = gy * GW + gx;
+      const a  = A[i], b = B[i];
+
+      // Signal: difference between A and B, normalized
+      // In react-diff patterns, background has A≈1,B≈0 and structure has A<1,B>0
+      const signal = Math.max(0, Math.min(1, b * 4)); // boost B for visibility
+
+      // Hue: 160 (teal) → 290 (purple) cycling slowly
+      const hue = (hueOffset + 160 + signal * 130) % 360;
+      const sat = 100;
+      const lit = signal < 0.05 ? signal * 200 : 10 + signal * 65;
+
+      // HSL → RGB inline
+      const h = hue / 360, s = sat / 100, l = lit / 100;
+      let r, g, bv;
+      if (s === 0) { r = g = bv = l; } else {
+        const q = l < 0.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
+        const hr = (p,q,t) => {
+          if(t<0)t+=1; if(t>1)t-=1;
+          if(t<1/6) return p+(q-p)*6*t;
+          if(t<1/2) return q;
+          if(t<2/3) return p+(q-p)*(2/3-t)*6;
+          return p;
+        };
+        r = hr(p,q,h+1/3); g = hr(p,q,h); bv = hr(p,q,h-1/3);
+      }
+
+      const pr = Math.round(r*255), pg = Math.round(g*255), pb = Math.round(bv*255);
+
+      // Fill SCALE×SCALE block
       for (let dy = 0; dy < SCALE; dy++) {
-        const py = pyBase + dy; if (py >= CH) continue;
+        const py = gy * SCALE + dy; if (py >= CH) continue;
         for (let dx = 0; dx < SCALE; dx++) {
-          const px = pxBase + dx; if (px >= CW) continue;
+          const px = gx * SCALE + dx; if (px >= CW) continue;
           const idx = (py * CW + px) * 4;
-          buf[idx]   = r; buf[idx+1] = g; buf[idx+2] = bv; buf[idx+3] = 255;
+          buf[idx]   = pr; buf[idx+1] = pg; buf[idx+2] = pb; buf[idx+3] = 255;
         }
       }
     }
@@ -194,8 +186,10 @@ function render() {
   ctx.putImageData(imgData, 0, 0);
 }
 
-// ── Animation ─────────────────────────────────────────────────
-const SPF = 10; // steps per frame — faster evolution
+// ── Animation ──────────────────────────────────────────────────
+// Run many steps upfront so patterns are already formed when visible
+const SPF = 6; // steps per frame
+
 function animate() {
   for (let i = 0; i < SPF; i++) step();
   render();
@@ -203,4 +197,6 @@ function animate() {
 }
 
 init();
+// Pre-warm: run 200 steps before first render so we don't show empty canvas
+for (let i = 0; i < 200; i++) step();
 requestAnimationFrame(animate);

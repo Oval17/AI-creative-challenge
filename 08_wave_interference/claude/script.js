@@ -6,7 +6,7 @@ const wrapper = document.querySelector('.wrapper');
 function scaleWrapper() {
   const s = Math.min(window.innerWidth / W, window.innerHeight / H);
   wrapper.style.transform = `scale(${s})`;
-  wrapper.style.left = ((window.innerWidth - W * s) / 2) + 'px';
+  wrapper.style.left = ((window.innerWidth  - W * s) / 2) + 'px';
   wrapper.style.top  = ((window.innerHeight - H * s) / 2) + 'px';
 }
 scaleWrapper();
@@ -15,151 +15,192 @@ window.addEventListener('resize', scaleWrapper);
 // ── Canvas ────────────────────────────────────────────────────
 const canvas = document.getElementById('simCanvas');
 const ctx    = canvas.getContext('2d');
-const CW = 1060, CH = 1340;
-canvas.width = CW; canvas.height = CH;
+// Use half-resolution then scale up for speed
+const CW = 530, CH = 670;
+canvas.width  = CW * 2;
+canvas.height = CH * 2;
+canvas.style.width  = (CW * 2) + 'px';
+canvas.style.height = (CH * 2) + 'px';
 
-// ── Audio ─────────────────────────────────────────────────────
+// ── Audio (started by user gesture via overlay) ───────────────
 let ac = null;
-async function initAudio() {
-  if (ac) return;
-  ac = new (window.AudioContext || window.webkitAudioContext)();
-  await ac.resume();
-  startDrone();
-}
-['click','keydown','touchstart','pointerdown'].forEach(e =>
-  document.addEventListener(e, initAudio, { once: true, passive: true })
-);
-// Try auto-start
-setTimeout(() => initAudio(), 300);
+const overlay = document.getElementById('startOverlay');
 
-function startDrone() {
-  if (!ac) return;
-  // Ambient drone: two detuned oscillators + reverb-like delay
+overlay.addEventListener('click', () => {
+  overlay.classList.add('hidden');
+  startAudio();
+});
+
+function startAudio() {
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+
   const master = ac.createGain();
-  master.gain.value = 0.12;
+  master.gain.value = 0.14;
   master.connect(ac.destination);
 
-  const freqs = [110, 110.5, 220, 220.3, 330];
+  // 3 detuned sine drones — one per wave source, slight pitch modulation
+  const freqs = [110, 146.8, 164.8]; // A2, D3, E3
   freqs.forEach((f, i) => {
-    const osc = ac.createOscillator();
-    const g   = ac.createGain();
-    osc.type = i < 2 ? 'sine' : 'triangle';
+    const osc  = ac.createOscillator();
+    const g    = ac.createGain();
+    const lfo  = ac.createOscillator();
+    const lfoG = ac.createGain();
+
+    osc.type = 'sine';
     osc.frequency.value = f;
-    g.gain.value = i < 2 ? 0.4 : 0.15;
-    osc.connect(g); g.connect(master);
+    g.gain.value = 0.33;
+
+    lfo.frequency.value = 0.12 + i * 0.07;
+    lfoG.gain.value     = f * 0.012;
+    lfo.connect(lfoG);
+    lfoG.connect(osc.frequency);
+    lfo.start();
+
+    osc.connect(g);
+    g.connect(master);
     osc.start();
   });
 
-  // Slow LFO pitch wobble for hypnotic feel
-  const lfo = ac.createOscillator();
-  const lfoGain = ac.createGain();
-  lfo.frequency.value = 0.08;
-  lfoGain.gain.value = 4;
-  lfo.connect(lfoGain);
-  lfo.start();
+  // Shimmer: high sine slowly sweeping
+  const shimOsc = ac.createOscillator();
+  const shimG   = ac.createGain();
+  shimOsc.type = 'sine';
+  shimOsc.frequency.value = 880;
+  shimG.gain.value = 0.04;
+  // Slow sweep
+  shimOsc.frequency.setValueAtTime(880, ac.currentTime);
+  shimOsc.frequency.linearRampToValueAtTime(1100, ac.currentTime + 8);
+  shimOsc.connect(shimG);
+  shimG.connect(master);
+  shimOsc.start();
 }
 
-// ── Wave sources ─────────────────────────────────────────────
-// Three sources for richer interference
-const NUM_SOURCES = 3;
-const sources = [
-  { ax: 0.30, ay: 0.45, vax: 0.0003, vay: 0.00015 },
-  { ax: 0.70, ay: 0.55, vax: -0.0002, vay: 0.00025 },
-  { ax: 0.50, ay: 0.30, vax: 0.00015, vay: -0.0003 },
+// ── Simulation ────────────────────────────────────────────────
+// 4 wave sources that drift slowly around the canvas
+const NUM = 4;
+const srcs = [
+  { ax: 0.25, ay: 0.30, vx:  0.0006, vy:  0.0003 },
+  { ax: 0.75, ay: 0.35, vx: -0.0005, vy:  0.0004 },
+  { ax: 0.50, ay: 0.65, vx:  0.0004, vy: -0.0005 },
+  { ax: 0.30, ay: 0.70, vx: -0.0003, vy: -0.0006 },
 ];
 
-// Wave parameters
-const WAVELENGTH = 80;
-const k = (2 * Math.PI) / WAVELENGTH;
-let phase = 0;
-const PHASE_SPEED = 0.055;
+// Different wavelengths for each source → complex interference
+const KS   = [0.072, 0.060, 0.052, 0.066];
+const AMPS  = [1.0, 0.85, 0.75, 0.90];
+const PHASE_OFFSETS = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5];
 
-// ── Pixel buffer ──────────────────────────────────────────────
-const imgData = ctx.createImageData(CW, CH);
+let phase = 0;
+const PHASE_SPEED = 0.12; // fast enough to look alive
+
+// Pixel buffer
+const imgData = ctx.createImageData(CW * 2, CH * 2);
 const buf     = imgData.data;
 
-// ── Render ────────────────────────────────────────────────────
+// Colour mapping: value [-1,1] → vivid neon
+// Uses a hue rotation so the whole spectrum cycles
+let hueShift = 0;
+function valueToColor(v) {
+  // v in [-1,1]
+  const n  = (v + 1) * 0.5;          // [0,1]
+  const n2 = Math.pow(n, 1.4);        // gamma contrast
+
+  // Hue cycle: deep blue (dark) → cyan → white (bright)
+  // But we also add a slow hue shift over time for cinematic feel
+  const hue = (hueShift + n2 * 200) % 360; // 200deg = blue→cyan→green arc
+  const sat = 100;
+  const lit = Math.round(n2 * n2 * 80); // 0–80%
+
+  // HSL to RGB
+  return hslToRgb(hue, sat, lit);
+}
+
+function hslToRgb(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  let r, g, b;
+  if (s === 0) { r = g = b = l; } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+function hue2rgb(p, q, t) {
+  if (t < 0) t += 1; if (t > 1) t -= 1;
+  if (t < 1/6) return p + (q - p) * 6 * t;
+  if (t < 1/2) return q;
+  if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+  return p;
+}
+
 function render() {
-  // Update source positions (slow circular drift)
-  for (const s of sources) {
-    s.ax += s.vax; s.ay += s.vay;
-    if (s.ax < 0.1 || s.ax > 0.9) s.vax *= -1;
-    if (s.ay < 0.15 || s.ay > 0.85) s.vay *= -1;
+  // Move sources
+  for (const s of srcs) {
+    s.ax += s.vx; s.ay += s.vy;
+    if (s.ax < 0.05 || s.ax > 0.95) s.vx *= -1;
+    if (s.ay < 0.10 || s.ay > 0.90) s.vy *= -1;
   }
 
-  const sx = sources.map(s => s.ax * CW);
-  const sy = sources.map(s => s.ay * CH);
+  const sx = srcs.map(s => s.ax * CW);
+  const sy = srcs.map(s => s.ay * CH);
 
+  // Compute at half resolution
   for (let py = 0; py < CH; py++) {
     for (let px = 0; px < CW; px++) {
-      let sum = 0;
-      for (let i = 0; i < NUM_SOURCES; i++) {
+      let sum = 0, wsum = 0;
+      for (let i = 0; i < NUM; i++) {
         const dx = px - sx[i], dy = py - sy[i];
-        const r = Math.sqrt(dx * dx + dy * dy);
-        const amp = 1 / (1 + r * 0.008);
-        sum += amp * Math.sin(k * r - phase + i * Math.PI * 0.4);
+        const r  = Math.sqrt(dx*dx + dy*dy);
+        const a  = AMPS[i] / (1 + r * 0.004);
+        sum  += a * Math.sin(KS[i] * r - phase + PHASE_OFFSETS[i]);
+        wsum += a;
       }
+      const v = sum / (wsum + 0.001);
+      const [r, g, b] = valueToColor(v);
 
-      // Normalize: sum in [-NUM_SOURCES, NUM_SOURCES] → [0,1]
-      const n = (sum / NUM_SOURCES + 1) * 0.5;
-      // Contrast gamma
-      const n2 = Math.pow(n, 1.6);
-
-      // Vivid neon colour mapping
-      // n2 near 1 = bright cyan-white, near 0.5 = magenta, near 0 = deep blue
-      let r, g, b;
-      if (n2 < 0.5) {
-        const t = n2 * 2; // 0..1
-        r = Math.round(t * 180);
-        g = Math.round(t * 0);
-        b = Math.round(20 + t * 235);
-      } else {
-        const t = (n2 - 0.5) * 2; // 0..1
-        r = Math.round(180 - t * 60);
-        g = Math.round(t * 255);
-        b = Math.round(255 - t * 55);
+      // Write to 2×2 block (upscale)
+      const bx = px * 2, by = py * 2;
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 2; dx++) {
+          const idx = ((by + dy) * CW * 2 + (bx + dx)) * 4;
+          buf[idx]   = r;
+          buf[idx+1] = g;
+          buf[idx+2] = b;
+          buf[idx+3] = 255;
+        }
       }
-
-      const idx = (py * CW + px) * 4;
-      buf[idx]     = r;
-      buf[idx + 1] = g;
-      buf[idx + 2] = b;
-      buf[idx + 3] = 255;
     }
   }
 
   ctx.putImageData(imgData, 0, 0);
 
-  // Draw glowing source rings + dots
-  for (let i = 0; i < NUM_SOURCES; i++) {
-    const x = sx[i], y = sy[i];
-    // Expanding ring pulse
-    const ringR = ((phase * 18 + i * 120) % 200) + 10;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(x, y, ringR, 0, Math.PI * 2);
-    ctx.strokeStyle = `hsla(${180 + i * 60}, 100%, 75%, ${0.4 * (1 - ringR / 210)})`;
-    ctx.lineWidth = 2;
-    ctx.shadowColor = `hsla(${180 + i * 60}, 100%, 75%, 0.9)`;
-    ctx.shadowBlur = 12;
-    ctx.stroke();
-    ctx.restore();
+  // Draw source glows on top
+  for (let i = 0; i < NUM; i++) {
+    const x = sx[i] * 2, y = sy[i] * 2;
+    const hue = (hueShift + i * 90) % 360;
 
-    // Core dot
+    // Glow halo
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, 60);
+    grad.addColorStop(0, `hsla(${hue},100%,80%,0.8)`);
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x, y, 60, 0, Math.PI*2); ctx.fill();
+
+    // Core
     ctx.save();
-    ctx.shadowColor = '#ffffff';
-    ctx.shadowBlur  = 30;
+    ctx.shadowColor = `hsl(${hue},100%,70%)`;
+    ctx.shadowBlur  = 25;
     ctx.fillStyle   = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI*2); ctx.fill();
     ctx.restore();
   }
 }
 
-// ── Animation ─────────────────────────────────────────────────
 function animate() {
-  phase += PHASE_SPEED;
+  phase     += PHASE_SPEED;
+  hueShift   = (hueShift + 0.15) % 360;
   render();
   requestAnimationFrame(animate);
 }
