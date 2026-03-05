@@ -6,7 +6,7 @@ const wrapper = document.querySelector('.wrapper');
 function scaleWrapper() {
   const s = Math.min(window.innerWidth / W, window.innerHeight / H);
   wrapper.style.transform = `scale(${s})`;
-  wrapper.style.left = ((window.innerWidth  - W * s) / 2) + 'px';
+  wrapper.style.left = ((window.innerWidth - W * s) / 2) + 'px';
   wrapper.style.top  = ((window.innerHeight - H * s) / 2) + 'px';
 }
 scaleWrapper();
@@ -18,56 +18,109 @@ const ctx    = canvas.getContext('2d');
 const CW = 1060, CH = 1340;
 canvas.width = CW; canvas.height = CH;
 
-// ── Wave sources (slowly drift apart and together) ────────────
+// ── Audio ─────────────────────────────────────────────────────
+let ac = null;
+async function initAudio() {
+  if (ac) return;
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  await ac.resume();
+  startDrone();
+}
+['click','keydown','touchstart','pointerdown'].forEach(e =>
+  document.addEventListener(e, initAudio, { once: true, passive: true })
+);
+// Try auto-start
+setTimeout(() => initAudio(), 300);
+
+function startDrone() {
+  if (!ac) return;
+  // Ambient drone: two detuned oscillators + reverb-like delay
+  const master = ac.createGain();
+  master.gain.value = 0.12;
+  master.connect(ac.destination);
+
+  const freqs = [110, 110.5, 220, 220.3, 330];
+  freqs.forEach((f, i) => {
+    const osc = ac.createOscillator();
+    const g   = ac.createGain();
+    osc.type = i < 2 ? 'sine' : 'triangle';
+    osc.frequency.value = f;
+    g.gain.value = i < 2 ? 0.4 : 0.15;
+    osc.connect(g); g.connect(master);
+    osc.start();
+  });
+
+  // Slow LFO pitch wobble for hypnotic feel
+  const lfo = ac.createOscillator();
+  const lfoGain = ac.createGain();
+  lfo.frequency.value = 0.08;
+  lfoGain.gain.value = 4;
+  lfo.connect(lfoGain);
+  lfo.start();
+}
+
+// ── Wave sources ─────────────────────────────────────────────
+// Three sources for richer interference
+const NUM_SOURCES = 3;
 const sources = [
-  { x: CW * 0.35, y: CH * 0.5, vx: 0.18, vy: 0.09 },
-  { x: CW * 0.65, y: CH * 0.5, vx: -0.18, vy: -0.09 },
+  { ax: 0.30, ay: 0.45, vax: 0.0003, vay: 0.00015 },
+  { ax: 0.70, ay: 0.55, vax: -0.0002, vay: 0.00025 },
+  { ax: 0.50, ay: 0.30, vax: 0.00015, vay: -0.0003 },
 ];
 
 // Wave parameters
-const WAVELENGTH  = 72;
-const SPEED       = 1.4;    // phase advance per frame
-const AMPLITUDE   = 1.0;
+const WAVELENGTH = 80;
+const k = (2 * Math.PI) / WAVELENGTH;
+let phase = 0;
+const PHASE_SPEED = 0.055;
 
-// ImageData for pixel-level rendering
+// ── Pixel buffer ──────────────────────────────────────────────
 const imgData = ctx.createImageData(CW, CH);
 const buf     = imgData.data;
 
-let t = 0;
-const k = (2 * Math.PI) / WAVELENGTH;  // wave number
-
-// ── Precompute source distances each frame ─────────────────────
+// ── Render ────────────────────────────────────────────────────
 function render() {
-  const s0x = sources[0].x, s0y = sources[0].y;
-  const s1x = sources[1].x, s1y = sources[1].y;
-  const phase = t * SPEED;
+  // Update source positions (slow circular drift)
+  for (const s of sources) {
+    s.ax += s.vax; s.ay += s.vay;
+    if (s.ax < 0.1 || s.ax > 0.9) s.vax *= -1;
+    if (s.ay < 0.15 || s.ay > 0.85) s.vay *= -1;
+  }
+
+  const sx = sources.map(s => s.ax * CW);
+  const sy = sources.map(s => s.ay * CH);
 
   for (let py = 0; py < CH; py++) {
     for (let px = 0; px < CW; px++) {
-      const dx0 = px - s0x, dy0 = py - s0y;
-      const dx1 = px - s1x, dy1 = py - s1y;
-      const r0  = Math.sqrt(dx0*dx0 + dy0*dy0);
-      const r1  = Math.sqrt(dx1*dx1 + dy1*dy1);
+      let sum = 0;
+      for (let i = 0; i < NUM_SOURCES; i++) {
+        const dx = px - sx[i], dy = py - sy[i];
+        const r = Math.sqrt(dx * dx + dy * dy);
+        const amp = 1 / (1 + r * 0.008);
+        sum += amp * Math.sin(k * r - phase + i * Math.PI * 0.4);
+      }
 
-      // superposition of two sinusoidal waves, 1/sqrt(r) falloff
-      const a0 = r0 < 1 ? 1 : AMPLITUDE / Math.sqrt(r0 + 1);
-      const a1 = r1 < 1 ? 1 : AMPLITUDE / Math.sqrt(r1 + 1);
-      const w0 = a0 * Math.sin(k * r0 - phase);
-      const w1 = a1 * Math.sin(k * r1 - phase);
+      // Normalize: sum in [-NUM_SOURCES, NUM_SOURCES] → [0,1]
+      const n = (sum / NUM_SOURCES + 1) * 0.5;
+      // Contrast gamma
+      const n2 = Math.pow(n, 1.6);
 
-      // Superposition: range [-2, 2] → normalise to [0, 1]
-      const val  = (w0 + w1 + 2) * 0.25;  // 0..1
-      const val2 = val * val;              // contrast boost
+      // Vivid neon colour mapping
+      // n2 near 1 = bright cyan-white, near 0.5 = magenta, near 0 = deep blue
+      let r, g, b;
+      if (n2 < 0.5) {
+        const t = n2 * 2; // 0..1
+        r = Math.round(t * 180);
+        g = Math.round(t * 0);
+        b = Math.round(20 + t * 235);
+      } else {
+        const t = (n2 - 0.5) * 2; // 0..1
+        r = Math.round(180 - t * 60);
+        g = Math.round(t * 255);
+        b = Math.round(255 - t * 55);
+      }
 
-      // Neon cyan/magenta colour mapping
-      const bright = val2 * 255;
       const idx = (py * CW + px) * 4;
-
-      // Constructive = cyan (#00ffff), destructive = deep indigo, midpoint = purple
-      const r = Math.round(bright * 0.4 + val2 * 80);
-      const g = Math.round(bright * 0.9);
-      const b = Math.round(bright * 1.0);
-
       buf[idx]     = r;
       buf[idx + 1] = g;
       buf[idx + 2] = b;
@@ -77,35 +130,37 @@ function render() {
 
   ctx.putImageData(imgData, 0, 0);
 
-  // Draw glowing source markers
-  for (const s of sources) {
+  // Draw glowing source rings + dots
+  for (let i = 0; i < NUM_SOURCES; i++) {
+    const x = sx[i], y = sy[i];
+    // Expanding ring pulse
+    const ringR = ((phase * 18 + i * 120) % 200) + 10;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, ringR, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${180 + i * 60}, 100%, 75%, ${0.4 * (1 - ringR / 210)})`;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = `hsla(${180 + i * 60}, 100%, 75%, 0.9)`;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.restore();
+
+    // Core dot
     ctx.save();
     ctx.shadowColor = '#ffffff';
-    ctx.shadowBlur  = 28;
+    ctx.shadowBlur  = 30;
     ctx.fillStyle   = '#ffffff';
     ctx.beginPath();
-    ctx.arc(s.x, s.y, 7, 0, Math.PI * 2);
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 }
 
-// ── Move sources slowly ───────────────────────────────────────
-const MARGIN = 120;
-function moveSources() {
-  for (const s of sources) {
-    s.x += s.vx;
-    s.y += s.vy;
-    if (s.x < MARGIN || s.x > CW - MARGIN) s.vx *= -1;
-    if (s.y < MARGIN || s.y > CH - MARGIN) s.vy *= -1;
-  }
-}
-
 // ── Animation ─────────────────────────────────────────────────
 function animate() {
-  moveSources();
+  phase += PHASE_SPEED;
   render();
-  t++;
   requestAnimationFrame(animate);
 }
 

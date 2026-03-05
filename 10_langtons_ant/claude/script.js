@@ -6,7 +6,7 @@ const wrapper = document.querySelector('.wrapper');
 function scaleWrapper() {
   const s = Math.min(window.innerWidth / W, window.innerHeight / H);
   wrapper.style.transform = `scale(${s})`;
-  wrapper.style.left = ((window.innerWidth  - W * s) / 2) + 'px';
+  wrapper.style.left = ((window.innerWidth - W * s) / 2) + 'px';
   wrapper.style.top  = ((window.innerHeight - H * s) / 2) + 'px';
 }
 scaleWrapper();
@@ -18,152 +18,195 @@ const ctx    = canvas.getContext('2d');
 const CW = 1060, CH = 1340;
 canvas.width = CW; canvas.height = CH;
 
+// ── Audio ─────────────────────────────────────────────────────
+let ac = null;
+async function initAudio() {
+  if (ac) return;
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  await ac.resume();
+  startAmbient();
+}
+['click','keydown','touchstart','pointerdown'].forEach(e =>
+  document.addEventListener(e, initAudio, { once: true, passive: true })
+);
+setTimeout(() => initAudio(), 300);
+
+let stepGlobal = 0;
+function startAmbient() {
+  if (!ac) return;
+  const master = ac.createGain();
+  master.gain.value = 0.09;
+  master.connect(ac.destination);
+
+  // Base drone
+  [80, 120, 160].forEach((f, i) => {
+    const osc = ac.createOscillator();
+    const g   = ac.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = f;
+    g.gain.value = 0.15 / (i + 1);
+    osc.connect(g); g.connect(master);
+    osc.start();
+  });
+
+  // Rhythmic click that speeds up as the ant enters highway phase
+  function click() {
+    if (!ac) return;
+    const now = ac.currentTime;
+    const osc = ac.createOscillator();
+    const env = ac.createGain();
+    osc.type = 'square';
+    // Pitch rises as pattern gets ordered
+    const progress = Math.min(1, stepGlobal / 12000);
+    osc.frequency.value = 300 + progress * 900;
+    env.gain.setValueAtTime(0.07, now);
+    env.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+    osc.connect(env); env.connect(master);
+    osc.start(now); osc.stop(now + 0.06);
+    // Gets faster as highway builds
+    const interval = Math.max(40, 200 - progress * 160);
+    setTimeout(click, interval);
+  }
+  click();
+}
+
 // ── Grid config ───────────────────────────────────────────────
-const CELL = 5;                          // px per grid cell
+const CELL = 6;
 const COLS = Math.floor(CW / CELL);
 const ROWS = Math.floor(CH / CELL);
 
-// Grid: 0 = white (off), 1 = black (on)
-const grid = new Uint8Array(COLS * ROWS);
+// Grid state: 0=off, 1=on; age: how many steps since last touched
+const grid  = new Uint8Array(COLS * ROWS);
+const age   = new Float32Array(COLS * ROWS); // 0=just touched, fades out
 
-// Directions: 0=UP, 1=RIGHT, 2=DOWN, 3=LEFT
-const DX = [0, 1, 0, -1];
+const DX = [0, 1, 0, -1]; // UP RIGHT DOWN LEFT
 const DY = [-1, 0, 1, 0];
 
-// ── Multiple ants (different start positions & directions) ────
-const ANTS = 3;
-const ants = [];
+// ── Ants ──────────────────────────────────────────────────────
+// Single primary ant + 2 colour-shifted ants offset in space
+const ants = [
+  { x: Math.floor(COLS/2),     y: Math.floor(ROWS/2),     dir: 0, color: [0, 230, 255],   glowColor: '#00e6ff' },
+  { x: Math.floor(COLS/2)+12,  y: Math.floor(ROWS/2)-8,  dir: 1, color: [255, 50, 180],  glowColor: '#ff32b4' },
+  { x: Math.floor(COLS/2)-10,  y: Math.floor(ROWS/2)+10, dir: 2, color: [255, 210, 0],   glowColor: '#ffd200' },
+];
 
-function initAnts() {
-  for (let i = 0; i < ANTS; i++) {
-    ants.push({
-      x: Math.floor(COLS / 2) + (i - 1) * Math.floor(COLS / 5),
-      y: Math.floor(ROWS / 2),
-      dir: i % 4,
-    });
-  }
-}
-
-// Ant colours (neon trail colours)
-const ANT_COLORS = ['#ff3399', '#00ffcc', '#ffcc00'];
-
-// ── Trail image data ─────────────────────────────────────────
-const imgData = ctx.createImageData(CW, CH);
-const buf     = imgData.data;
-
-// Fill buffer with dark background
-function clearBuf() {
-  for (let i = 0; i < buf.length; i += 4) {
-    buf[i]     = 8;
-    buf[i + 1] = 8;
-    buf[i + 2] = 14;
-    buf[i + 3] = 255;
-  }
-}
-
-// Set a cell in the buffer
-function setCellColor(gx, gy, r, g, b) {
-  for (let dy = 0; dy < CELL; dy++) {
-    for (let dx = 0; dx < CELL; dx++) {
-      const px = gx * CELL + dx;
-      const py = gy * CELL + dy;
-      if (px >= CW || py >= CH) continue;
-      const idx = (py * CW + px) * 4;
-      buf[idx]     = r;
-      buf[idx + 1] = g;
-      buf[idx + 2] = b;
-      buf[idx + 3] = 255;
-    }
-  }
-}
-
-// Parse hex color to rgb
-function hexRgb(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-const ANT_RGB = ANT_COLORS.map(hexRgb);
-
-// Neon cyan for "on" cells, deep navy for "off"
-const ON_R = 0, ON_G = 220, ON_B = 255;
-const OFF_R = 8, OFF_G = 8, OFF_B = 14;
-
-// ── Step ─────────────────────────────────────────────────────
 function stepAnt(ant) {
   const i = ant.y * COLS + ant.x;
   if (grid[i] === 0) {
-    // White cell: turn right
-    ant.dir = (ant.dir + 1) % 4;
-    grid[i] = 1;
+    ant.dir = (ant.dir + 1) % 4; grid[i] = 1;
   } else {
-    // Black cell: turn left
-    ant.dir = (ant.dir + 3) % 4;
-    grid[i] = 0;
+    ant.dir = (ant.dir + 3) % 4; grid[i] = 0;
   }
+  age[i] = 1.0; // freshly touched = fully bright
   ant.x = (ant.x + DX[ant.dir] + COLS) % COLS;
   ant.y = (ant.y + DY[ant.dir] + ROWS) % ROWS;
 }
 
-// ── Full redraw from grid state ───────────────────────────────
-function fullRedraw() {
-  clearBuf();
+// ── Render ────────────────────────────────────────────────────
+// Off-screen ImageData approach for speed
+const imgData = ctx.createImageData(CW, CH);
+const buf     = imgData.data;
+
+const FADE_RATE = 0.0012; // per frame — slow trail
+
+// ON-cell base colour: neon cyan
+const ON_BASE = [0, 180, 220];
+
+function render() {
+  // Fade ages
+  for (let i = 0; i < age.length; i++) {
+    if (age[i] > 0) age[i] = Math.max(0, age[i] - FADE_RATE);
+  }
+
+  // Clear buffer to background
+  for (let i = 0; i < buf.length; i += 4) {
+    buf[i] = 6; buf[i+1] = 6; buf[i+2] = 10; buf[i+3] = 255;
+  }
+
+  // Draw grid cells
   for (let gy = 0; gy < ROWS; gy++) {
     for (let gx = 0; gx < COLS; gx++) {
-      if (grid[gy * COLS + gx] === 1) {
-        setCellColor(gx, gy, ON_R, ON_G, ON_B);
+      const gi = gy * COLS + gx;
+      const state = grid[gi];
+      const a = age[gi];
+
+      // Only draw if on or has recent age
+      if (state === 0 && a < 0.01) continue;
+
+      let cr, cg, cb;
+      if (state === 1) {
+        // Active ON cell: bright neon cyan with age brightness
+        const bright = 0.4 + a * 0.6;
+        cr = Math.round(ON_BASE[0] * bright);
+        cg = Math.round(ON_BASE[1] * bright);
+        cb = Math.round(ON_BASE[2] * bright);
+      } else {
+        // OFF cell fading out — ghost trail
+        const t = a;
+        cr = Math.round(0   * t);
+        cg = Math.round(120 * t);
+        cb = Math.round(180 * t);
+      }
+
+      const pxBase = gx * CELL, pyBase = gy * CELL;
+      for (let dy = 0; dy < CELL; dy++) {
+        const py = pyBase + dy; if (py >= CH) continue;
+        for (let dx = 0; dx < CELL; dx++) {
+          const px = pxBase + dx; if (px >= CW) continue;
+          const idx = (py * CW + px) * 4;
+          buf[idx]   = cr; buf[idx+1] = cg; buf[idx+2] = cb; buf[idx+3] = 255;
+        }
       }
     }
   }
-  // Draw ant positions on top
-  for (let a = 0; a < ANTS; a++) {
-    const [r, g, b] = ANT_RGB[a];
-    setCellColor(ants[a].x, ants[a].y, r, g, b);
-  }
-  ctx.putImageData(imgData, 0, 0);
-}
 
-// ── Overlay glow for ant positions ───────────────────────────
-function drawAntGlow() {
-  for (let a = 0; a < ANTS; a++) {
-    const ant = ants[a];
-    const cx = ant.x * CELL + CELL / 2;
-    const cy = ant.y * CELL + CELL / 2;
+  ctx.putImageData(imgData, 0, 0);
+
+  // Draw ant glow on top of ImageData
+  for (const ant of ants) {
+    const cx = ant.x * CELL + CELL * 0.5;
+    const cy = ant.y * CELL + CELL * 0.5;
+
+    // Outer glow halo
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, CELL * 3);
+    grad.addColorStop(0, ant.glowColor + 'cc');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - CELL*3, cy - CELL*3, CELL*6, CELL*6);
+
+    // Bright core dot
     ctx.save();
-    ctx.shadowColor = ANT_COLORS[a];
-    ctx.shadowBlur  = 18;
-    ctx.fillStyle   = ANT_COLORS[a];
+    ctx.shadowColor = ant.glowColor;
+    ctx.shadowBlur  = 22;
+    ctx.fillStyle   = '#ffffff';
     ctx.beginPath();
-    ctx.arc(cx, cy, CELL * 0.9, 0, Math.PI * 2);
+    ctx.arc(cx, cy, CELL * 0.7, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 }
 
-// ── Step counter / reset logic ────────────────────────────────
-let stepCount = 0;
-const RESET_AT = 160000;  // Reset after enough steps to show highway pattern
+// ── Step counter & reset ──────────────────────────────────────
+const RESET_AFTER = 200000;
 
 function reset() {
-  grid.fill(0);
-  ants.length = 0;
-  initAnts();
-  stepCount = 0;
+  grid.fill(0); age.fill(0); stepGlobal = 0;
+  ants[0].x = Math.floor(COLS/2);    ants[0].y = Math.floor(ROWS/2);    ants[0].dir = 0;
+  ants[1].x = Math.floor(COLS/2)+12; ants[1].y = Math.floor(ROWS/2)-8;  ants[1].dir = 1;
+  ants[2].x = Math.floor(COLS/2)-10; ants[2].y = Math.floor(ROWS/2)+10; ants[2].dir = 2;
 }
 
 // ── Animation ─────────────────────────────────────────────────
-const STEPS_PER_FRAME = 120;  // fast enough to see the highway emerge
+const SPF = 80; // steps per frame — visible but not instant
 
 function animate() {
-  for (let i = 0; i < STEPS_PER_FRAME; i++) {
+  for (let i = 0; i < SPF; i++) {
     for (const ant of ants) stepAnt(ant);
-    stepCount++;
-    if (stepCount >= RESET_AT) { reset(); break; }
+    stepGlobal++;
+    if (stepGlobal >= RESET_AFTER) { reset(); break; }
   }
-  fullRedraw();
-  drawAntGlow();
+  render();
   requestAnimationFrame(animate);
 }
 
-initAnts();
 requestAnimationFrame(animate);
