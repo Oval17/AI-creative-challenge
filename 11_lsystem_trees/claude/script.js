@@ -136,7 +136,7 @@ let phase     = 'grow';  // 'grow' | 'hold' | 'fade'
 let phaseTimer = 0;
 let globalAlpha = 1.0;
 
-const GROW_SPEED   = 6;    // segments revealed per frame (slightly faster)
+const GROW_SPEED   = 30;   // fast growth
 const HOLD_FRAMES  = 120;  // 2s hold when fully grown
 const FADE_FRAMES  = 60;   // 1s fade out
 
