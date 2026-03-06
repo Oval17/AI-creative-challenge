@@ -1,0 +1,11 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #000; width: 100vw; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.wrapper { width: 1080px; height: 1920px; background: #080808; position: absolute; display: flex; flex-direction: column; align-items: center; transform-origin: top left; }
+.title-block { width: 100%; padding: 72px 60px 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.model-name { font-family: "Cormorant Garamond", serif; font-weight: 300; font-size: 28px; letter-spacing: 0.35em; color: rgba(255,255,255,0.7); }
+.sim-name { font-family: "Cormorant Garamond", serif; font-weight: 600; font-size: 64px; letter-spacing: 0.04em; color: #fff; text-align: center; }
+.divider { width: 420px; height: 1px; margin-top: 18px; background: linear-gradient(to right, transparent, rgba(255,255,255,0.35), transparent); }
+.canvas-area { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
+#simCanvas { display: block; }
+.bottom-label { padding: 0 0 52px; }
+.bottom-label p { font-family: "Cormorant Garamond", serif; font-weight: 300; font-size: 26px; letter-spacing: 0.25em; color: rgba(255,255,255,0.6); }
