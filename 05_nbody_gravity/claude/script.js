@@ -193,30 +193,32 @@ async function startAudio() {
 
     master = ac.createGain();
     master.gain.setValueAtTime(0, ac.currentTime);
-    master.gain.linearRampToValueAtTime(0.55, ac.currentTime + 3);
-    master.connect(ac.destination);
+    master.gain.linearRampToValueAtTime(0.88, ac.currentTime + 3);
+      const _comp=ac.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(ac.destination);
 
     // Sub-bass gravitational hum
     const sub = ac.createOscillator();
     sub.type = 'sine';
     sub.frequency.value = 42;
-    const sg = ac.createGain(); sg.gain.value = 0.4;
+    const sg = ac.createGain(); sg.gain.value = 0.720;
     sub.connect(sg); sg.connect(master); sub.start();
 
     // Mid harmonic
     const mid = ac.createOscillator();
     mid.type = 'triangle';
     mid.frequency.value = 84.2;
-    const mg = ac.createGain(); mg.gain.value = 0.15;
+    const mg = ac.createGain(); mg.gain.value = 0.525;
     mid.connect(mg); mg.connect(master); mid.start();
 
     // High shimmer
     const high = ac.createOscillator();
     high.type = 'sine';
     high.frequency.value = 336;
-    const hg = ac.createGain(); hg.gain.value = 0.06;
+    const hg = ac.createGain(); hg.gain.value = 0.210;
     const hLFO = ac.createOscillator();
-    const hLG = ac.createGain(); hLG.gain.value = 0.05;
+    const hLG = ac.createGain(); hLG.gain.value = 0.175;
     hLFO.frequency.value = 0.3;
     hLFO.connect(hLG); hLG.connect(hg.gain);
     high.connect(hg); hg.connect(master); high.start(); hLFO.start();
@@ -230,12 +232,12 @@ async function startAudio() {
     src.buffer = buf; src.loop = true;
     const bp = ac.createBiquadFilter();
     bp.type = 'bandpass'; bp.frequency.value = 350; bp.Q.value = 0.4;
-    const wg = ac.createGain(); wg.gain.value = 0.05;
+    const wg = ac.createGain(); wg.gain.value = 0.175;
     src.connect(bp); bp.connect(wg); wg.connect(master); src.start();
 
     // LFO breath on master
     const lfo = ac.createOscillator();
-    const lg = ac.createGain(); lg.gain.value = 0.07;
+    const lg = ac.createGain(); lg.gain.value = 0.245;
     lfo.frequency.value = 0.08;
     lfo.connect(lg); lg.connect(master.gain); lfo.start();
 

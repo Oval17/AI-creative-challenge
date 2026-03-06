@@ -103,18 +103,20 @@ function initAudio(){
   aCtx=new(window.AudioContext||window.webkitAudioContext)();
   const master=aCtx.createGain();
   master.gain.setValueAtTime(0,aCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.5,aCtx.currentTime+3);
-  master.connect(aCtx.destination);
+  master.gain.linearRampToValueAtTime(0.80,aCtx.currentTime+3);
+    const _comp=aCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(aCtx.destination);
 
   const rb=aCtx.createBuffer(2,aCtx.sampleRate*2,aCtx.sampleRate);
   for(let ch=0;ch<2;ch++){const d=rb.getChannelData(ch);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2.2);}
   const rev=aCtx.createConvolver();rev.buffer=rb;
-  const rg=aCtx.createGain();rg.gain.value=0.5;rev.connect(rg);rg.connect(master);
+  const rg=aCtx.createGain();rg.gain.value=0.900;rev.connect(rg);rg.connect(master);
 
   // Neural hum — soft ambient pad
   [110,165,220,330].forEach((f,i)=>{
     const o=aCtx.createOscillator();const g=aCtx.createGain();
-    o.type='sine';o.frequency.value=f;g.gain.value=0.05-i*0.01;
+    o.type='sine';o.frequency.value=f;g.gain.value=0.612-i*0.01;
     const lfo=aCtx.createOscillator();const lg=aCtx.createGain();
     lfo.frequency.value=0.15+i*0.07;lg.gain.value=f*0.004;
     lfo.connect(lg);lg.connect(o.frequency);lfo.start();
@@ -130,7 +132,7 @@ function initAudio(){
     const freq=300+Math.random()*600;
     const o=aCtx.createOscillator();const g=aCtx.createGain();
     o.type='sine';o.frequency.value=freq;
-    g.gain.setValueAtTime(0.04,now);g.gain.exponentialRampToValueAtTime(0.0001,now+0.1);
+    g.gain.setValueAtTime(0.140,now);g.gain.exponentialRampToValueAtTime(0.0001,now+0.1);
     o.connect(g);g.connect(rev);o.start(now);o.stop(now+0.12);
     setTimeout(fireBlip,150+Math.random()*200);
   }
@@ -148,7 +150,7 @@ function initAudio(){
     const freq=pitchDelta>0?880:440;
     const o=aCtx.createOscillator();const g=aCtx.createGain();
     o.type='triangle';o.frequency.value=freq;
-    g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.05,now+0.01);g.gain.exponentialRampToValueAtTime(0.0001,now+0.5);
+    g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.70,now+0.01);g.gain.exponentialRampToValueAtTime(0.0001,now+0.5);
     o.connect(g);g.connect(rev);o.start(now);o.stop(now+0.55);
     setTimeout(lossBeep,1200+Math.random()*800);
   }

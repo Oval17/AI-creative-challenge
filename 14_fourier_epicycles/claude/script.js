@@ -88,8 +88,9 @@ function initAudio() {
   try {
     ac = new (window.AudioContext || window.webkitAudioContext)();
     acMaster = ac.createGain();
-    acMaster.gain.value = 0.13;
-    acMaster.connect(ac.destination);
+    acMaster.gain.value = 0.455;
+    const _comp14=ac.createDynamicsCompressor();_comp14.threshold.value=-12;_comp14.knee.value=8;_comp14.ratio.value=6;_comp14.attack.value=0.003;_comp14.release.value=0.12;_comp14.connect(ac.destination);
+    acMaster.connect(_comp14);
 
     // Reverb convolver for lush sound
     const convLen = ac.sampleRate * 2.5;
@@ -101,7 +102,7 @@ function initAudio() {
     const convolver = ac.createConvolver();
     convolver.buffer = convBuf;
     const convGain = ac.createGain();
-    convGain.gain.value = 0.45;
+    convGain.gain.value = 0.810;
     convolver.connect(convGain);
     convGain.connect(acMaster);
 
@@ -150,7 +151,7 @@ function startAmbientPad(shapeIndex) {
       const env  = ac.createGain();
       osc.type = 'sine';
       osc.frequency.value = f + Math.random() * 0.4;
-      env.gain.value = 0.04 / (i + 1);
+      env.gain.value = 0.140 / (i + 1);
       osc.connect(env);
       env.connect(acMaster);
       if (ac._conv) env.connect(ac._conv);

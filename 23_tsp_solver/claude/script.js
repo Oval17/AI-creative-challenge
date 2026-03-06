@@ -65,18 +65,20 @@ function initAudio(){
   aCtx=new(window.AudioContext||window.webkitAudioContext)();
   const master=aCtx.createGain();
   master.gain.setValueAtTime(0,aCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.5,aCtx.currentTime+2.5);
-  master.connect(aCtx.destination);
+  master.gain.linearRampToValueAtTime(0.80,aCtx.currentTime+2.5);
+    const _comp=aCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(aCtx.destination);
 
   const rb=aCtx.createBuffer(2,aCtx.sampleRate*2,aCtx.sampleRate);
   for(let ch=0;ch<2;ch++){const d=rb.getChannelData(ch);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);}
   const rev=aCtx.createConvolver();rev.buffer=rb;
-  const rg=aCtx.createGain();rg.gain.value=0.5;rev.connect(rg);rg.connect(master);
+  const rg=aCtx.createGain();rg.gain.value=0.900;rev.connect(rg);rg.connect(master);
 
   // Thinking hum — slow pad
   [82.4,110,164.8,220].forEach((f,i)=>{
     const o=aCtx.createOscillator();const g=aCtx.createGain();
-    o.type='triangle';o.frequency.value=f;g.gain.value=0.04-i*0.007;
+    o.type='triangle';o.frequency.value=f;g.gain.value=0.490-i*0.007;
     const lfo=aCtx.createOscillator();const lg=aCtx.createGain();
     lfo.frequency.value=0.12+i*0.05;lg.gain.value=f*0.003;
     lfo.connect(lg);lg.connect(o.frequency);lfo.start();
@@ -91,7 +93,7 @@ function initAudio(){
       const freq=180+drawnEdge*(800/N_CITIES);
       const o=aCtx.createOscillator();const g=aCtx.createGain();
       o.type='sine';o.frequency.value=freq;
-      g.gain.setValueAtTime(0.08,now);g.gain.exponentialRampToValueAtTime(0.0001,now+0.18);
+      g.gain.setValueAtTime(0.280,now);g.gain.exponentialRampToValueAtTime(0.0001,now+0.18);
       o.connect(g);g.connect(rev);o.start(now);o.stop(now+0.2);
     }
     setTimeout(edgeTick,90);
@@ -104,7 +106,7 @@ function initAudio(){
       const now=aCtx.currentTime;
       const o=aCtx.createOscillator();const g=aCtx.createGain();
       o.type='sine';o.frequency.value=600+Math.random()*400;
-      g.gain.setValueAtTime(0.05,now);g.gain.exponentialRampToValueAtTime(0.0001,now+0.12);
+      g.gain.setValueAtTime(0.175,now);g.gain.exponentialRampToValueAtTime(0.0001,now+0.12);
       o.connect(g);g.connect(rev);o.start(now);o.stop(now+0.15);
     }
     setTimeout(swapSound,200);
@@ -117,7 +119,7 @@ function initAudio(){
     [523.25,659.25,783.99,1046.5].forEach((f,i)=>{
       const o=aCtx.createOscillator();const g=aCtx.createGain();
       o.type='sine';o.frequency.value=f;
-      g.gain.setValueAtTime(0,now+i*0.12);g.gain.linearRampToValueAtTime(0.08,now+i*0.12+0.02);g.gain.exponentialRampToValueAtTime(0.0001,now+i*0.12+1.2);
+      g.gain.setValueAtTime(0,now+i*0.12);g.gain.linearRampToValueAtTime(0.88,now+i*0.12+0.02);g.gain.exponentialRampToValueAtTime(0.0001,now+i*0.12+1.2);
       o.connect(g);g.connect(rev);o.start(now+i*0.12);o.stop(now+i*0.12+1.5);
     });
   };

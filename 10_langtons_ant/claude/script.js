@@ -31,8 +31,10 @@ function startAudio() {
 }
 function buildAudio() {
   const master = ac.createGain();
-  master.gain.value = 0.10;
-  master.connect(ac.destination);
+  master.gain.value = 0.900;
+    const _comp=ac.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(ac.destination);
 
   // Low ambient drone
   [65, 98, 130].forEach((f, i) => {
@@ -40,7 +42,7 @@ function buildAudio() {
     const g   = ac.createGain();
     osc.type = 'triangle';
     osc.frequency.value = f;
-    g.gain.value = 0.2 / (i + 1);
+    g.gain.value = 0.700 / (i + 1);
     osc.connect(g); g.connect(master); osc.start();
   });
 
@@ -54,7 +56,7 @@ function buildAudio() {
     osc.type = 'sine';
     // Pitch rises from 200 → 1200 Hz as ant reaches highway
     osc.frequency.value = 200 + progress * 1000;
-    env.gain.setValueAtTime(0.09, now);
+    env.gain.setValueAtTime(0.315, now);
     env.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
     osc.connect(env); env.connect(master);
     osc.start(now); osc.stop(now + 0.09);

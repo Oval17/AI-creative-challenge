@@ -89,19 +89,21 @@ function initAudio(){
   aCtx=new(window.AudioContext||window.webkitAudioContext)();
   const master=aCtx.createGain();
   master.gain.setValueAtTime(0,aCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.5,aCtx.currentTime+3);
-  master.connect(aCtx.destination);
+  master.gain.linearRampToValueAtTime(0.80,aCtx.currentTime+3);
+    const _comp=aCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(aCtx.destination);
 
   // Reverb
   const rb=aCtx.createBuffer(2,aCtx.sampleRate*2.5,aCtx.sampleRate);
   for(let ch=0;ch<2;ch++){const d=rb.getChannelData(ch);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);}
   const rev=aCtx.createConvolver();rev.buffer=rb;
-  const rg=aCtx.createGain();rg.gain.value=0.6;rev.connect(rg);rg.connect(master);
+  const rg=aCtx.createGain();rg.gain.value=0.600;rev.connect(rg);rg.connect(master);
 
   // Cosmic drone — low hum of the universe
   [55,110,165].forEach((f,i)=>{
     const o=aCtx.createOscillator();const g=aCtx.createGain();
-    o.type='sine';o.frequency.value=f;g.gain.value=0.06-i*0.015;
+    o.type='sine';o.frequency.value=f;g.gain.value=0.735-i*0.015;
     const lfo=aCtx.createOscillator();const lg=aCtx.createGain();
     lfo.frequency.value=0.08+i*0.04;lg.gain.value=f*0.005;
     lfo.connect(lg);lg.connect(o.frequency);lfo.start();
@@ -120,7 +122,7 @@ function initAudio(){
         const o=aCtx.createOscillator();const g=aCtx.createGain();
         o.type='sine';o.frequency.value=Math.min(freq,2200);
         g.gain.setValueAtTime(0,now);
-        g.gain.linearRampToValueAtTime(0.07,now+0.015);
+        g.gain.linearRampToValueAtTime(0.88,now+0.015);
         g.gain.exponentialRampToValueAtTime(0.0001,now+0.8);
         o.connect(g);g.connect(rev);o.start(now);o.stop(now+0.85);
         revIdx+=50; // skip ahead so pings don't pile up
@@ -138,7 +140,7 @@ function initAudio(){
     const f=[220,330,440,550,660][Math.floor(Math.random()*5)];
     const o=aCtx.createOscillator();const g=aCtx.createGain();
     o.type='triangle';o.frequency.value=f;
-    g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.05,now+0.1);g.gain.exponentialRampToValueAtTime(0.0001,now+3);
+    g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.70,now+0.1);g.gain.exponentialRampToValueAtTime(0.0001,now+3);
     o.connect(g);g.connect(rev);o.start(now);o.stop(now+3.5);
     setTimeout(resonate,3000+Math.random()*4000);
   }

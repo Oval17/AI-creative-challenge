@@ -29,8 +29,10 @@ function startAudio() {
 }
 function buildAudio() {
   const master = ac.createGain();
-  master.gain.value = 0.10;
-  master.connect(ac.destination);
+  master.gain.value = 0.900;
+    const _comp=ac.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(ac.destination);
 
   // Deep organic pad — evolving slow harmonics
   [55, 82.4, 110, 164.8].forEach((f, i) => {
@@ -40,7 +42,7 @@ function buildAudio() {
     const lfoG = ac.createGain();
     osc.type = i % 2 === 0 ? 'sine' : 'triangle';
     osc.frequency.value = f;
-    gain.gain.value = 0.20 / (i + 1);
+    gain.gain.value = 0.700 / (i + 1);
     lfo.frequency.value = 0.03 + i * 0.02;
     lfoG.gain.value = f * 0.018;
     lfo.connect(lfoG); lfoG.connect(osc.frequency); lfo.start();
@@ -56,7 +58,7 @@ function buildAudio() {
   const nGain  = ac.createGain();
   noise.buffer = buf; noise.loop = true;
   filter.type = 'bandpass'; filter.frequency.value = 150; filter.Q.value = 6;
-  nGain.gain.value = 0.025;
+  nGain.gain.value = 0.088;
   noise.connect(filter); filter.connect(nGain); nGain.connect(master);
   noise.start();
 }

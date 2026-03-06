@@ -164,8 +164,10 @@ function startAudio() {
     if (ac.state === 'suspended') ac.resume();
 
     const master = ac.createGain();
-    master.gain.value = 0.10;
-    master.connect(ac.destination);
+    master.gain.value = 0.900;
+      const _comp=ac.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(ac.destination);
 
     // Slow evolving ambient pad — sounds like glass/crystal humming
     [90, 135, 180, 270].forEach((f, i) => {
@@ -177,10 +179,10 @@ function startAudio() {
       const lfo = ac.createOscillator();
       const lfoG = ac.createGain();
       lfo.frequency.value = 0.15 + i * 0.05;
-      lfoG.gain.value = 0.8;
+      lfoG.gain.value = 0.800;
       lfo.connect(lfoG); lfoG.connect(osc.frequency);
       lfo.start();
-      g.gain.value = 0.15 / (i + 1);
+      g.gain.value = 0.525 / (i + 1);
       osc.connect(g); g.connect(master); osc.start();
     });
 

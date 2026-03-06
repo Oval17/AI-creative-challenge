@@ -133,27 +133,29 @@ function initAudio(){
   aCtx=new(window.AudioContext||window.webkitAudioContext)();
   const master=aCtx.createGain();
   master.gain.setValueAtTime(0,aCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.5,aCtx.currentTime+3);
-  master.connect(aCtx.destination);
+  master.gain.linearRampToValueAtTime(0.80,aCtx.currentTime+3);
+    const _comp=aCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(aCtx.destination);
 
   // Long reverb impulse
   const rb=aCtx.createBuffer(2,aCtx.sampleRate*3,aCtx.sampleRate);
   for(let ch=0;ch<2;ch++){const d=rb.getChannelData(ch);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.5);}
   const rev=aCtx.createConvolver();rev.buffer=rb;
-  const rg=aCtx.createGain();rg.gain.value=0.5;rev.connect(rg);rg.connect(master);
+  const rg=aCtx.createGain();rg.gain.value=0.900;rev.connect(rg);rg.connect(master);
 
   // Deep dungeon drone (low rumble)
   [27.5,55,82.4].forEach((f,i)=>{
     const o=aCtx.createOscillator();const g=aCtx.createGain();
     o.type='sawtooth';o.frequency.value=f;
     const lp=aCtx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=180;lp.Q.value=2;
-    g.gain.value=0.05-i*0.01;
+    g.gain.value=0.612-i*0.01;
     o.connect(lp);lp.connect(g);g.connect(rev);o.start();
   });
 
   // Eerie mid-frequency shimmer
   const shim=aCtx.createOscillator();const shimG=aCtx.createGain();
-  shim.type='sine';shim.frequency.value=220;shimG.gain.value=0.03;
+  shim.type='sine';shim.frequency.value=220;shimG.gain.value=0.420;
   const shimLfo=aCtx.createOscillator();const shimLg=aCtx.createGain();
   shimLfo.frequency.value=0.3;shimLg.gain.value=15;
   shimLfo.connect(shimLg);shimLg.connect(shim.frequency);
@@ -166,7 +168,7 @@ function initAudio(){
     const d=b.getChannelData(0);
     for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2.5)*0.7;
     const s=aCtx.createBufferSource();s.buffer=b;
-    const g=aCtx.createGain();g.gain.value=0.4;
+    const g=aCtx.createGain();g.gain.value=0.720;
     s.connect(g);g.connect(rev);s.start(now);
     setTimeout(step,600+Math.random()*300);
   }
@@ -177,7 +179,7 @@ function initAudio(){
     const now=aCtx.currentTime;
     const o=aCtx.createOscillator();const g=aCtx.createGain();
     o.type='sine';o.frequency.value=440+Math.random()*220;
-    g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.06,now+0.05);g.gain.exponentialRampToValueAtTime(0.0001,now+2.5);
+    g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.84,now+0.05);g.gain.exponentialRampToValueAtTime(0.0001,now+2.5);
     o.connect(g);g.connect(rev);o.start(now);o.stop(now+3);
     setTimeout(echo,4000+Math.random()*4000);
   }

@@ -176,13 +176,14 @@ function startAudio() {
     ac = new (window.AudioContext || window.webkitAudioContext)();
     if (ac.state === 'suspended') ac.resume();
     masterGain = ac.createGain();
-    masterGain.gain.value = 0.10;
-    masterGain.connect(ac.destination);
+    masterGain.gain.value = 0.350;
+    const _comp11=ac.createDynamicsCompressor();_comp11.threshold.value=-12;_comp11.knee.value=8;_comp11.ratio.value=6;_comp11.attack.value=0.003;_comp11.release.value=0.12;_comp11.connect(ac.destination);
+      masterGain.connect(_comp11);
     [110, 220, 330].forEach((f, i) => {
       const osc = ac.createOscillator(), g = ac.createGain();
       osc.type = 'triangle';
       osc.frequency.value = f + Math.random();
-      g.gain.value = 0.15 / (i+1);
+      g.gain.value = 0.525 / (i+1);
       osc.connect(g); g.connect(masterGain); osc.start();
     });
     function tick() {
@@ -192,7 +193,7 @@ function startAudio() {
         const d   = buf.getChannelData(0);
         for (let i=0; i<d.length; i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(d.length*0.3));
         const src = ac.createBufferSource(), g = ac.createGain();
-        src.buffer = buf; g.gain.value = 0.06;
+        src.buffer = buf; g.gain.value = 0.210;
         src.connect(g); g.connect(masterGain); src.start();
       }
       setTimeout(tick, 85 + Math.random()*100);

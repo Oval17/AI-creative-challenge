@@ -298,8 +298,9 @@ function startDjAudio() {
     djAc = new (window.AudioContext || window.webkitAudioContext)();
     if (djAc.state === 'suspended') djAc.resume();
     djMaster = djAc.createGain();
-    djMaster.gain.value = 0.10;
-    djMaster.connect(djAc.destination);
+    djMaster.gain.value = 0.350;
+    const _comp13=djAc.createDynamicsCompressor();_comp13.threshold.value=-12;_comp13.knee.value=8;_comp13.ratio.value=6;_comp13.attack.value=0.003;_comp13.release.value=0.12;_comp13.connect(djAc.destination);
+    djMaster.connect(_comp13);
 
     // Low drone background
     [55, 110].forEach((f, i) => {
@@ -307,7 +308,7 @@ function startDjAudio() {
       const g   = djAc.createGain();
       osc.type = 'sine';
       osc.frequency.value = f;
-      g.gain.value = 0.12 / (i + 1);
+      g.gain.value = 0.420 / (i + 1);
       osc.connect(g); g.connect(djMaster); osc.start();
     });
 
@@ -324,7 +325,7 @@ function playExploreBlip(distRatio) {
     const g   = djAc.createGain();
     osc.type = 'sine';
     osc.frequency.value = freq;
-    g.gain.value = 0.04;
+    g.gain.value = 0.140;
     g.gain.setTargetAtTime(0, djAc.currentTime + 0.03, 0.02);
     osc.connect(g); g.connect(djMaster);
     osc.start(); osc.stop(djAc.currentTime + 0.06);
@@ -340,7 +341,7 @@ function playPathTone(t) {
     const g   = djAc.createGain();
     osc.type = 'triangle';
     osc.frequency.value = freq;
-    g.gain.value = 0.06;
+    g.gain.value = 0.210;
     g.gain.setTargetAtTime(0, djAc.currentTime + 0.05, 0.03);
     osc.connect(g); g.connect(djMaster);
     osc.start(); osc.stop(djAc.currentTime + 0.1);

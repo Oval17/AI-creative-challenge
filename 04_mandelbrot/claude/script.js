@@ -131,28 +131,30 @@ function initAudio() {
   // Master gain (fade in)
   const master = audioCtx.createGain();
   master.gain.setValueAtTime(0, t);
-  master.gain.linearRampToValueAtTime(0.5, t + 3);
-  master.connect(audioCtx.destination);
+  master.gain.linearRampToValueAtTime(0.80, t + 3);
+    const _comp=audioCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(audioCtx.destination);
 
   // Sub drone – 55Hz sine
   const sub = audioCtx.createOscillator();
   sub.type = 'sine'; sub.frequency.value = 55;
-  const subGain = audioCtx.createGain(); subGain.gain.value = 0.3;
+  const subGain = audioCtx.createGain(); subGain.gain.value = 0.850;
   sub.connect(subGain); subGain.connect(master); sub.start();
 
   // Mid drone – 110Hz triangle, slightly detuned
   const mid = audioCtx.createOscillator();
   mid.type = 'triangle'; mid.frequency.value = 110.15;
-  const midGain = audioCtx.createGain(); midGain.gain.value = 0.2;
+  const midGain = audioCtx.createGain(); midGain.gain.value = 0.700;
   mid.connect(midGain); midGain.connect(master); mid.start();
 
   // High shimmer – 440Hz sine, tremolo LFO
   const high = audioCtx.createOscillator();
   high.type = 'sine'; high.frequency.value = 440;
-  const tremolo = audioCtx.createGain(); tremolo.gain.value = 0.05;
+  const tremolo = audioCtx.createGain(); tremolo.gain.value = 0.175;
   const lfo = audioCtx.createOscillator();
   lfo.frequency.value = 0.25;
-  const lfoGain = audioCtx.createGain(); lfoGain.gain.value = 0.04;
+  const lfoGain = audioCtx.createGain(); lfoGain.gain.value = 0.140;
   lfo.connect(lfoGain); lfoGain.connect(tremolo.gain);
   high.connect(tremolo); tremolo.connect(master); high.start(); lfo.start();
 
@@ -165,7 +167,7 @@ function initAudio() {
   src.buffer = buf; src.loop = true;
   const bp = audioCtx.createBiquadFilter();
   bp.type = 'bandpass'; bp.frequency.value = 300; bp.Q.value = 0.3;
-  const windGain = audioCtx.createGain(); windGain.gain.value = 0.06;
+  const windGain = audioCtx.createGain(); windGain.gain.value = 0.210;
   src.connect(bp); bp.connect(windGain); windGain.connect(master); src.start();
 
   // Slow LFO on wind filter frequency (0.05Hz sweep 200-600Hz)

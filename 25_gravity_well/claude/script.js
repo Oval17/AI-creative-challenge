@@ -183,15 +183,17 @@ let aCtx=null;
 function initAudio(){
   if(aCtx)return;
   aCtx=new(window.AudioContext||window.webkitAudioContext)();
-  const master=aCtx.createGain();master.gain.setValueAtTime(0,aCtx.currentTime);master.gain.linearRampToValueAtTime(0.45,aCtx.currentTime+3);master.connect(aCtx.destination);
+  const master=aCtx.createGain();master.gain.setValueAtTime(0,aCtx.currentTime);master.gain.linearRampToValueAtTime(0.92,aCtx.currentTime+3);  const _comp=aCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(aCtx.destination);
   const rb=aCtx.createBuffer(2,aCtx.sampleRate*3,aCtx.sampleRate);
   for(let ch=0;ch<2;ch++){const d=rb.getChannelData(ch);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.8);}
-  const rev=aCtx.createConvolver();rev.buffer=rb;const rg=aCtx.createGain();rg.gain.value=0.55;rev.connect(rg);rg.connect(master);
+  const rev=aCtx.createConvolver();rev.buffer=rb;const rg=aCtx.createGain();rg.gain.value=0.920;rev.connect(rg);rg.connect(master);
   // Deep space drone per well
   wells.forEach((w,i)=>{
     const freq=[55,82.4,110][i]||55;
     const o=aCtx.createOscillator();const g=aCtx.createGain();
-    o.type='sine';o.frequency.value=freq;g.gain.value=0.06;
+    o.type='sine';o.frequency.value=freq;g.gain.value=0.735;
     const lfo=aCtx.createOscillator();const lg=aCtx.createGain();
     lfo.frequency.value=0.05+i*0.03;lg.gain.value=8;
     lfo.connect(lg);lg.connect(o.frequency);lfo.start();
@@ -202,7 +204,7 @@ function initAudio(){
   const nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
   const ns=aCtx.createBufferSource();ns.buffer=nb;ns.loop=true;
   const lp=aCtx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=200;lp.Q.value=4;
-  const ng=aCtx.createGain();ng.gain.value=0.08;
+  const ng=aCtx.createGain();ng.gain.value=0.900;
   ns.connect(lp);lp.connect(ng);ng.connect(rev);ns.start();
   // Particle whoosh (speed-reactive, periodic)
   function whoosh(){
@@ -212,7 +214,7 @@ function initAudio(){
     const o=aCtx.createOscillator();const g=aCtx.createGain();
     o.type='sawtooth';o.frequency.value=80+avgSpd*30;
     const lp2=aCtx.createBiquadFilter();lp2.type='lowpass';lp2.frequency.value=300+avgSpd*200;
-    g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.05,now+0.3);g.gain.exponentialRampToValueAtTime(0.0001,now+1.2);
+    g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.70,now+0.3);g.gain.exponentialRampToValueAtTime(0.0001,now+1.2);
     o.connect(lp2);lp2.connect(g);g.connect(rev);o.start(now);o.stop(now+1.3);
     setTimeout(whoosh,1200+Math.random()*1800);
   }

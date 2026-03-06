@@ -221,9 +221,10 @@ function playRingChime(ring) {
   const filt = audioCtx.createBiquadFilter();
   filt.type = 'bandpass'; filt.frequency.value = freq * 2; filt.Q.value = 1.5;
   osc.type = 'sine'; osc.frequency.value = freq;
-  osc.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+  osc.connect(filt); filt.connect(gain); const _comp01=audioCtx.createDynamicsCompressor();_comp01.threshold.value=-12;_comp01.knee.value=8;_comp01.ratio.value=6;_comp01.attack.value=0.003;_comp01.release.value=0.12;_comp01.connect(audioCtx.destination);
+  gain.connect(_comp01);;
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.18, now + 0.05);
+  gain.gain.linearRampToValueAtTime(0.72, now + 0.05);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
   osc.start(now); osc.stop(now + 1.8);
   // add a soft 5th harmony
@@ -232,7 +233,7 @@ function playRingChime(ring) {
   osc2.type = 'sine'; osc2.frequency.value = freq * 1.5;
   osc2.connect(g2); g2.connect(audioCtx.destination);
   g2.gain.setValueAtTime(0, now);
-  g2.gain.linearRampToValueAtTime(0.07, now + 0.08);
+  g2.gain.linearRampToValueAtTime(0.88, now + 0.08);
   g2.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
   osc2.start(now); osc2.stop(now + 1.4);
 }
