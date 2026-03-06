@@ -114,6 +114,66 @@ function computeDepth() {
   return depth;
 }
 
+// ── Audio ─────────────────────────────────────────────────────
+let aCtx = null;
+function initAudio() {
+  if (aCtx) return;
+  aCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const master = aCtx.createGain();
+  master.gain.setValueAtTime(0, aCtx.currentTime);
+  master.gain.linearRampToValueAtTime(0.38, aCtx.currentTime + 3);
+  master.connect(aCtx.destination);
+  // reverb (long cave echo)
+  const rb = aCtx.createBuffer(2, aCtx.sampleRate * 5, aCtx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = rb.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/d.length,1.5);
+  }
+  const rev = aCtx.createConvolver(); rev.buffer = rb; rev.connect(master);
+  // low cave rumble drone
+  [40, 60, 80].forEach((f, i) => {
+    const o = aCtx.createOscillator(); const g = aCtx.createGain();
+    o.type = 'sine'; o.frequency.value = f; g.gain.value = 0.10 - i * 0.02;
+    o.connect(g); g.connect(rev); o.start();
+  });
+  // cave wind: band-passed noise
+  const nb = aCtx.createBuffer(1, aCtx.sampleRate*2, aCtx.sampleRate);
+  const nd = nb.getChannelData(0); for (let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+  const ns = aCtx.createBufferSource(); ns.buffer = nb; ns.loop = true;
+  const bp = aCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=180; bp.Q.value=1.2;
+  const ng = aCtx.createGain(); ng.gain.value = 0.18;
+  ns.connect(bp); bp.connect(ng); ng.connect(rev); ns.start();
+  // drip sounds — spaced randomly
+  function drip() {
+    const now = aCtx.currentTime;
+    const o = aCtx.createOscillator(); const g = aCtx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(900 + Math.random()*400, now);
+    o.frequency.exponentialRampToValueAtTime(300 + Math.random()*200, now + 0.15);
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.12, now + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+    o.connect(g); g.connect(rev);
+    o.start(now); o.stop(now + 0.55);
+    setTimeout(drip, 800 + Math.random() * 3500);
+  }
+  setTimeout(drip, 400);
+  // occasional low distant boom
+  function boom() {
+    const now = aCtx.currentTime;
+    const o = aCtx.createOscillator(); const g = aCtx.createGain();
+    o.type = 'sine'; o.frequency.value = 50 + Math.random()*20;
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.15, now + 0.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 2.5);
+    o.connect(g); g.connect(rev); o.start(now); o.stop(now + 2.5);
+    setTimeout(boom, 6000 + Math.random() * 10000);
+  }
+  setTimeout(boom, 3000);
+}
+document.addEventListener('click', initAudio, { once: true });
+setTimeout(() => { try { initAudio(); } catch(e) {} }, 500);
+
 // ── Drip particles (ambient atmosphere) ──────────────────────
 const drips = [];
 function spawnDrip() {
