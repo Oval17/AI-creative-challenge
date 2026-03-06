@@ -263,35 +263,5 @@ function animate() {
 
 requestAnimationFrame(animate);
 
-// ── Audio unlock overlay ──────────────────────────────────────
-(function(){
-  const ov = document.createElement('div');
-  ov.id = 'audioOverlay';
-  ov.style.cssText = [
-    'position:fixed','top:0','left:0','width:100%','height:100%',
-    'display:flex','align-items:center','justify-content:center',
-    'background:rgba(0,0,0,0.55)','z-index:9999','cursor:pointer',
-    'flex-direction:column','gap:16px'
-  ].join(';');
-  const icon = document.createElement('div');
-  icon.textContent = String.fromCodePoint(0x1F50A);
-  icon.style.cssText = 'font-size:64px;';
-  const txt = document.createElement('div');
-  txt.textContent = 'Tap to enable sound';
-  txt.style.cssText = [
-    'font-family:"Cormorant Garamond",serif',
-    'font-weight:300','letter-spacing:0.2em',
-    'color:rgba(255,255,255,0.8)','font-size:22px'
-  ].join(';');
-  ov.appendChild(icon); ov.appendChild(txt);
-  document.body.appendChild(ov);
-  function unlock() {
-    try { initAudio(); } catch(e) { console.error(e); }
-    ov.style.opacity = '0';
-    ov.style.transition = 'opacity 0.5s';
-    setTimeout(function(){ ov.remove(); }, 600);
-  }
-  ov.addEventListener('click', unlock);
-  ov.addEventListener('touchstart', unlock);
-})();
+
 
