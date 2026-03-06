@@ -114,62 +114,95 @@ function computeDepth() {
   return depth;
 }
 
-// ── Audio ─────────────────────────────────────────────────────
+// ── Audio — cave ambient: pentatonic stone chimes + wind + drips ──
 let aCtx = null;
 function initAudio() {
   if (aCtx) return;
   aCtx = new (window.AudioContext || window.webkitAudioContext)();
   const master = aCtx.createGain();
   master.gain.setValueAtTime(0, aCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.38, aCtx.currentTime + 3);
+  master.gain.linearRampToValueAtTime(0.5, aCtx.currentTime + 3);
   master.connect(aCtx.destination);
-  // reverb (long cave echo)
-  const rb = aCtx.createBuffer(2, aCtx.sampleRate * 5, aCtx.sampleRate);
+
+  // Long cave reverb (3 s tail)
+  const rb = aCtx.createBuffer(2, aCtx.sampleRate * 3.5, aCtx.sampleRate);
   for (let ch = 0; ch < 2; ch++) {
     const d = rb.getChannelData(ch);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/d.length,1.5);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, 1.8);
   }
-  const rev = aCtx.createConvolver(); rev.buffer = rb; rev.connect(master);
-  // low cave rumble drone
-  [40, 60, 80].forEach((f, i) => {
-    const o = aCtx.createOscillator(); const g = aCtx.createGain();
-    o.type = 'sine'; o.frequency.value = f; g.gain.value = 0.10 - i * 0.02;
-    o.connect(g); g.connect(rev); o.start();
-  });
-  // cave wind: band-passed noise
-  const nb = aCtx.createBuffer(1, aCtx.sampleRate*2, aCtx.sampleRate);
-  const nd = nb.getChannelData(0); for (let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+  const rev = aCtx.createConvolver(); rev.buffer = rb;
+  const revG = aCtx.createGain(); revG.gain.value = 0.6;
+  rev.connect(revG); revG.connect(master);
+
+  // Deep cave breath — very slow filtered noise (wind through tunnels)
+  const nb = aCtx.createBuffer(1, aCtx.sampleRate * 4, aCtx.sampleRate);
+  const nd = nb.getChannelData(0); for (let i=0; i<nd.length; i++) nd[i] = Math.random()*2-1;
   const ns = aCtx.createBufferSource(); ns.buffer = nb; ns.loop = true;
-  const bp = aCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=180; bp.Q.value=1.2;
-  const ng = aCtx.createGain(); ng.gain.value = 0.18;
-  ns.connect(bp); bp.connect(ng); ng.connect(rev); ns.start();
-  // drip sounds — spaced randomly
+  const lp = aCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220; lp.Q.value = 3;
+  const windG = aCtx.createGain(); windG.gain.value = 0.12;
+  // Slow LFO breathes the wind in and out
+  const windLfo = aCtx.createOscillator(); const windLfog = aCtx.createGain();
+  windLfo.frequency.value = 0.08; windLfog.gain.value = 0.09;
+  windLfo.connect(windLfog); windLfog.connect(windG.gain);
+  ns.connect(lp); lp.connect(windG); windG.connect(master); windG.connect(rev); ns.start(); windLfo.start();
+
+  // Pentatonic scale (A minor pentatonic) — stone/crystal resonance
+  // Notes: A2 110, C3 130.8, D3 146.8, E3 164.8, G3 196, A3 220, C4 261.6, D4 293.7, E4 329.6
+  const penta = [110, 130.8, 146.8, 164.8, 196, 220, 261.6, 293.7, 329.6];
+
+  // Slow ambient pad: two detuned sine tones that drift
+  function makePad(freq) {
+    const o1 = aCtx.createOscillator(); const o2 = aCtx.createOscillator();
+    const g = aCtx.createGain();
+    o1.type = 'sine'; o2.type = 'sine';
+    o1.frequency.value = freq; o2.frequency.value = freq * 1.003;
+    g.gain.setValueAtTime(0, aCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0.04, aCtx.currentTime + 4);
+    o1.connect(g); o2.connect(g); g.connect(rev); o1.start(); o2.start();
+  }
+  makePad(110); makePad(164.8); makePad(220); // root, fifth, octave
+
+  // Stone chime melody — picks from pentatonic, plays slowly, reverberant
+  function chime() {
+    const now = aCtx.currentTime;
+    const freq = penta[Math.floor(Math.random() * penta.length)];
+    const o = aCtx.createOscillator(); const g = aCtx.createGain();
+    // Marimba/stone timbre: sine with fast attack, slow exponential decay
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.22, now + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 2.8);
+    // Add 2nd harmonic (slight overtone)
+    const o2 = aCtx.createOscillator(); const g2 = aCtx.createGain();
+    o2.type = 'sine'; o2.frequency.value = freq * 2.76; // stone partial
+    g2.gain.setValueAtTime(0, now);
+    g2.gain.linearRampToValueAtTime(0.06, now + 0.005);
+    g2.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
+    o.connect(g); g.connect(rev); o2.connect(g2); g2.connect(rev);
+    o.start(now); o.stop(now + 3); o2.start(now); o2.stop(now + 1.2);
+    // Next chime in 1.5–5 seconds
+    setTimeout(chime, 1500 + Math.random() * 3500);
+  }
+  setTimeout(chime, 600);
+  setTimeout(chime, 2200); // second voice offset
+
+  // Musical water drips — pitched to pentatonic notes
   function drip() {
     const now = aCtx.currentTime;
+    const freq = penta[Math.floor(Math.random() * 4)] * 2; // upper register
     const o = aCtx.createOscillator(); const g = aCtx.createGain();
     o.type = 'sine';
-    o.frequency.setValueAtTime(900 + Math.random()*400, now);
-    o.frequency.exponentialRampToValueAtTime(300 + Math.random()*200, now + 0.15);
+    o.frequency.setValueAtTime(freq * 1.4, now);
+    o.frequency.exponentialRampToValueAtTime(freq, now + 0.06);
     g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(0.12, now + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
-    o.connect(g); g.connect(rev);
-    o.start(now); o.stop(now + 0.55);
-    setTimeout(drip, 800 + Math.random() * 3500);
+    g.gain.linearRampToValueAtTime(0.10, now + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+    o.connect(g); g.connect(rev); o.start(now); o.stop(now + 0.75);
+    setTimeout(drip, 1200 + Math.random() * 4000);
   }
-  setTimeout(drip, 400);
-  // occasional low distant boom
-  function boom() {
-    const now = aCtx.currentTime;
-    const o = aCtx.createOscillator(); const g = aCtx.createGain();
-    o.type = 'sine'; o.frequency.value = 50 + Math.random()*20;
-    g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(0.15, now + 0.1);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 2.5);
-    o.connect(g); g.connect(rev); o.start(now); o.stop(now + 2.5);
-    setTimeout(boom, 6000 + Math.random() * 10000);
-  }
-  setTimeout(boom, 3000);
+  setTimeout(drip, 800);
+  setTimeout(drip, 2500);
+  setTimeout(drip, 4000);
 }
 document.addEventListener('click', initAudio, { once: true });
 setTimeout(() => { try { initAudio(); } catch(e) {} }, 500);
