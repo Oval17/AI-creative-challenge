@@ -105,7 +105,7 @@ let phase      = 'grow';
 let phaseTimer = 0;
 let gAlpha     = 1.0;
 
-const GROW_PER_FRAME = 40;  // segments revealed per frame (fast but smooth)
+const GROW_PER_FRAME = 8;   // segments per frame — visible, satisfying growth
 const HOLD_FRAMES    = 120;
 const FADE_FRAMES    = 55;
 
