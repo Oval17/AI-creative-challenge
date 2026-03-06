@@ -29,7 +29,6 @@ function sampleShape(shapeFn, N) {
   return pts;
 }
 
-// Collection of interesting shapes
 const SHAPES = [
   // Heart
   t => {
@@ -70,46 +69,75 @@ function dft(signal) {
     const phase = Math.atan2(im, re);
     result.push({ freq: k, amp, phase, re, im });
   }
-  // Sort by amplitude descending
   result.sort((a, b) => b.amp - a.amp);
   return result;
 }
 
 // ── State ──────────────────────────────────────────────────────
 const N_SAMPLES = 256;
-const N_CIRCLES = 64; // use top N_CIRCLES harmonics
+const N_CIRCLES = 64;
 
-let freqs       = [];
-let path        = [];        // traced path points
-let time        = 0;
-let shapeIdx    = 0;
-let phase2      = 'trace';   // 'trace' | 'hold' | 'fade'
-let holdTimer   = 0;
-let gAlpha      = 1;
+let freqs     = [];
+let path      = [];
+let time      = 0;
+let shapeIdx  = 0;
+let phase2    = 'trace';
+let holdTimer = 0;
+let gAlpha    = 1;
 
-const SPEED      = (2 * Math.PI) / (N_SAMPLES * 1.0); // complete one revolution per N_SAMPLES frames
-const HOLD_F     = 80;
-const FADE_F     = 50;
+const SPEED  = (2 * Math.PI) / N_SAMPLES;
+const HOLD_F = 80;
+const FADE_F = 50;
 
 function loadShape(idx) {
-  const pts  = sampleShape(SHAPES[idx % SHAPES.length], N_SAMPLES);
-  freqs      = dft(pts).slice(0, N_CIRCLES);
-  path       = [];
-  time       = 0;
-  phase2     = 'trace';
-  holdTimer  = 0;
-  gAlpha     = 1;
+  const pts = sampleShape(SHAPES[idx % SHAPES.length], N_SAMPLES);
+  freqs     = dft(pts).slice(0, N_CIRCLES);
+  path      = [];
+  time      = 0;
+  phase2    = 'trace';
+  holdTimer = 0;
+  gAlpha    = 1;
 }
 
 loadShape(0);
 
+// ── Audio ──────────────────────────────────────────────────────
+function startAudio() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+
+    const master = ac.createGain();
+    master.gain.value = 0.10;
+    master.connect(ac.destination);
+
+    // Rotating harmonic tones — orbital feel matching spinning epicycles
+    [130, 196, 261, 392, 523].forEach((f, i) => {
+      const osc  = ac.createOscillator();
+      const g    = ac.createGain();
+      const lfo  = ac.createOscillator();
+      const lfoG = ac.createGain();
+      osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+      osc.frequency.value = f;
+      lfo.frequency.value = 0.08 + i * 0.03;
+      lfoG.gain.value = f * 0.04;
+      lfo.connect(lfoG); lfoG.connect(osc.frequency);
+      g.gain.value = 0.12 / (i + 1);
+      osc.connect(g); g.connect(master);
+      lfo.start(); osc.start();
+    });
+
+    document.addEventListener('click', () => { if (ac.state === 'suspended') ac.resume(); });
+  } catch(e) {}
+}
+
+startAudio();
+
 // ── Epicycle computation ───────────────────────────────────────
 function computeEpicycles(t) {
-  // Returns array of {cx,cy,r} for each circle, plus final tip point
   const cx0 = CW / 2, cy0 = CH / 2;
   let x = cx0, y = cy0;
   const circles = [];
-
   for (const f of freqs) {
     const prevX = x, prevY = y;
     const angle = f.freq * t + f.phase;
@@ -124,21 +152,17 @@ function computeEpicycles(t) {
 function render() {
   ctx.fillStyle = '#080808';
   ctx.fillRect(0, 0, CW, CH);
-
   ctx.globalAlpha = gAlpha;
 
   const { circles, tipX, tipY } = computeEpicycles(time);
 
-  // Draw circles (only visible ones with r > threshold)
   for (let i = 0; i < circles.length; i++) {
     const c = circles[i];
     if (c.r < 1.5) continue;
-
     const t = i / circles.length;
-    const hue = 200 + t * 120; // blue → green as circles get smaller
+    const hue = 200 + t * 120;
     const alpha = 0.08 + (1 - t) * 0.12;
 
-    // Circle outline
     ctx.save();
     ctx.strokeStyle = `hsla(${hue},80%,60%,${alpha})`;
     ctx.lineWidth   = 0.8;
@@ -146,7 +170,6 @@ function render() {
     ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Radius arm
     ctx.strokeStyle = `hsla(${hue},90%,70%,${alpha * 2.5})`;
     ctx.lineWidth   = 1.0;
     ctx.beginPath();
@@ -156,17 +179,13 @@ function render() {
     ctx.restore();
   }
 
-  // Draw traced path
   if (path.length > 1) {
     ctx.save();
-    ctx.lineWidth   = 2.2;
-    ctx.lineCap     = 'round';
-    ctx.lineJoin    = 'round';
-
-    // Gradient path: older points fade
+    ctx.lineCap  = 'round';
+    ctx.lineJoin = 'round';
     for (let i = 1; i < path.length; i++) {
-      const t  = i / path.length;
-      const hue = 160 + t * 80;  // teal → magenta as path progresses
+      const t   = i / path.length;
+      const hue = 160 + t * 80;
       const alpha = 0.3 + t * 0.7;
       ctx.strokeStyle = `hsla(${hue},100%,65%,${alpha})`;
       ctx.lineWidth   = 1.5 + t * 1.5;
@@ -178,7 +197,6 @@ function render() {
     ctx.restore();
   }
 
-  // Glow tip
   ctx.save();
   ctx.shadowColor = '#00ffff';
   ctx.shadowBlur  = 20;
@@ -197,13 +215,8 @@ function animate() {
     const { tipX, tipY } = computeEpicycles(time);
     path.push({ x: tipX, y: tipY });
     time += SPEED;
-
-    if (path.length >= N_SAMPLES) {
-      phase2 = 'hold';
-      holdTimer = 0;
-    }
+    if (path.length >= N_SAMPLES) { phase2 = 'hold'; holdTimer = 0; }
   } else if (phase2 === 'hold') {
-    // Keep spinning but don't extend path
     time += SPEED;
     holdTimer++;
     if (holdTimer >= HOLD_F) { phase2 = 'fade'; holdTimer = 0; }
@@ -211,10 +224,7 @@ function animate() {
     time += SPEED;
     holdTimer++;
     gAlpha = 1 - holdTimer / FADE_F;
-    if (holdTimer >= FADE_F) {
-      shapeIdx++;
-      loadShape(shapeIdx);
-    }
+    if (holdTimer >= FADE_F) { shapeIdx++; loadShape(shapeIdx); }
   }
 
   render();

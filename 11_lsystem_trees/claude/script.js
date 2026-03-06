@@ -136,7 +136,7 @@ let phase     = 'grow';  // 'grow' | 'hold' | 'fade'
 let phaseTimer = 0;
 let globalAlpha = 1.0;
 
-const GROW_SPEED   = 3;    // segments revealed per frame
+const GROW_SPEED   = 6;    // segments revealed per frame (slightly faster)
 const HOLD_FRAMES  = 120;  // 2s hold when fully grown
 const FADE_FRAMES  = 60;   // 1s fade out
 
@@ -156,6 +156,58 @@ function loadPreset(idx) {
 }
 
 loadPreset(0);
+
+// ── Audio ──────────────────────────────────────────────────────
+let ac = null;
+let masterGain = null;
+
+function startAudio() {
+  try {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+
+    masterGain = ac.createGain();
+    masterGain.gain.value = 0.12;
+    masterGain.connect(ac.destination);
+
+    // Ambient wind/forest drone — two detuned pads
+    [110, 220, 330].forEach((f, i) => {
+      const osc = ac.createOscillator();
+      const g   = ac.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = f + Math.random() * 2;
+      g.gain.value = 0.18 / (i + 1);
+      osc.connect(g); g.connect(masterGain); osc.start();
+    });
+
+    // Occasional soft branch "snap" click
+    function branchTick() {
+      if (!ac) return;
+      if (phase === 'grow') {
+        const now = ac.currentTime;
+        const buf = ac.createBuffer(1, ac.sampleRate * 0.04, ac.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (data.length * 0.3));
+        const src = ac.createBufferSource();
+        const g   = ac.createGain();
+        src.buffer = buf;
+        // Pitch rises as tree grows (higher segments = higher pitch)
+        const prog = Math.min(1, drawCount / Math.max(1, segments.length));
+        g.gain.value = 0.06 + prog * 0.08;
+        src.connect(g); g.connect(masterGain);
+        src.start(now);
+      }
+      setTimeout(branchTick, 80 + Math.random() * 120);
+    }
+    branchTick();
+  } catch(e) {}
+}
+
+startAudio();
+document.addEventListener('click', () => {
+  if (!ac) startAudio();
+  else if (ac.state === 'suspended') ac.resume();
+});
 
 // ── Render ─────────────────────────────────────────────────────
 function render() {

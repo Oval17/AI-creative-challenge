@@ -88,7 +88,7 @@ class MinHeap {
 }
 
 let heap, startNode, endNode, frame, phase, pathCells, pathDrawIdx;
-let EXPLORE_PER_FRAME = 12;
+let EXPLORE_PER_FRAME = 3;  // slowed down from 12
 
 function reset() {
   generateMaze();
@@ -254,12 +254,22 @@ function animate() {
 
   if (phase === 'explore') {
     const done = exploreStep();
+    // play blip every 2 frames during explore
+    if (frame % 2 === 0) {
+      const maxD = dist[endNode] < Infinity ? dist[endNode] : 200;
+      const bestExplored = Math.max(...Array.from(dist).filter(d => d < Infinity && d > 0));
+      playExploreBlip(Math.min(1, bestExplored / 200));
+    }
     if (done || (vis[endNode] === 2)) {
       buildPath();
       phase = 'path';
       pathDrawIdx = 0;
     }
   } else if (phase === 'path') {
+    // play path tone as path is drawn
+    if (pathDrawIdx < pathCells.length) {
+      playPathTone(pathDrawIdx / Math.max(1, pathCells.length));
+    }
     pathDrawIdx += PATH_SPF;
     if (pathDrawIdx >= pathCells.length) {
       pathDrawIdx = pathCells.length;
@@ -278,6 +288,66 @@ function animate() {
   render();
   requestAnimationFrame(animate);
 }
+
+// ── Audio ──────────────────────────────────────────────────────
+let djAc = null;
+let djMaster = null;
+
+function startDjAudio() {
+  try {
+    djAc = new (window.AudioContext || window.webkitAudioContext)();
+    if (djAc.state === 'suspended') djAc.resume();
+    djMaster = djAc.createGain();
+    djMaster.gain.value = 0.10;
+    djMaster.connect(djAc.destination);
+
+    // Low drone background
+    [55, 110].forEach((f, i) => {
+      const osc = djAc.createOscillator();
+      const g   = djAc.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      g.gain.value = 0.12 / (i + 1);
+      osc.connect(g); g.connect(djMaster); osc.start();
+    });
+
+    document.addEventListener('click', () => { if (djAc.state === 'suspended') djAc.resume(); });
+  } catch(e) {}
+}
+
+// Play a short blip for each frontier cell explored
+function playExploreBlip(distRatio) {
+  if (!djAc || !djMaster) return;
+  try {
+    const freq = 300 + distRatio * 800;
+    const osc = djAc.createOscillator();
+    const g   = djAc.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    g.gain.value = 0.04;
+    g.gain.setTargetAtTime(0, djAc.currentTime + 0.03, 0.02);
+    osc.connect(g); g.connect(djMaster);
+    osc.start(); osc.stop(djAc.currentTime + 0.06);
+  } catch(e) {}
+}
+
+// Play path tone
+function playPathTone(t) {
+  if (!djAc || !djMaster) return;
+  try {
+    const freq = 500 + t * 600;
+    const osc = djAc.createOscillator();
+    const g   = djAc.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    g.gain.value = 0.06;
+    g.gain.setTargetAtTime(0, djAc.currentTime + 0.05, 0.03);
+    osc.connect(g); g.connect(djMaster);
+    osc.start(); osc.stop(djAc.currentTime + 0.1);
+  } catch(e) {}
+}
+
+startDjAudio();
 
 reset();
 requestAnimationFrame(animate);

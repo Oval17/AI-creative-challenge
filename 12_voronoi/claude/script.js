@@ -157,6 +157,39 @@ function renderVoronoi() {
   }
 }
 
+// ── Audio ──────────────────────────────────────────────────────
+function startAudio() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+
+    const master = ac.createGain();
+    master.gain.value = 0.10;
+    master.connect(ac.destination);
+
+    // Slow evolving ambient pad — sounds like glass/crystal humming
+    [90, 135, 180, 270].forEach((f, i) => {
+      const osc = ac.createOscillator();
+      const g   = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f + Math.random() * 1.5;
+      // Slow LFO vibrato
+      const lfo = ac.createOscillator();
+      const lfoG = ac.createGain();
+      lfo.frequency.value = 0.15 + i * 0.05;
+      lfoG.gain.value = 0.8;
+      lfo.connect(lfoG); lfoG.connect(osc.frequency);
+      lfo.start();
+      g.gain.value = 0.15 / (i + 1);
+      osc.connect(g); g.connect(master); osc.start();
+    });
+
+    document.addEventListener('click', () => { if (ac.state === 'suspended') ac.resume(); });
+  } catch(e) {}
+}
+
+startAudio();
+
 // ── Animation loop ─────────────────────────────────────────────
 function animate() {
   updateSeeds();
