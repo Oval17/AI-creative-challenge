@@ -100,11 +100,11 @@ function update(){
       const f=G*w.mass/r2;
       ax+=f*dx/r;ay+=f*dy/r;
     }
-    pvx[i]+=ax*0.016;pvy[i]+=ay*0.016;
+    pvx[i]+=ax*0.009;pvy[i]+=ay*0.009;
     // Speed cap
     const spd=Math.sqrt(pvx[i]*pvx[i]+pvy[i]*pvy[i]);
-    if(spd>14){pvx[i]=pvx[i]/spd*14;pvy[i]=pvy[i]/spd*14;}
-    px[i]+=pvx[i];py[i]+=pvy[i];
+    if(spd>7){pvx[i]=pvx[i]/spd*7;pvy[i]=pvy[i]/spd*7;}
+    px[i]+=pvx[i]*0.6;py[i]+=pvy[i]*0.6;
 
     // Respawn if too close to a well or out of bounds
     let dead=false;
