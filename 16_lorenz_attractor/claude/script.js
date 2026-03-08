@@ -132,8 +132,10 @@ function initAudio() {
 
   const master = audioCtx.createGain();
   master.gain.setValueAtTime(0, audioCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 3);
-  master.connect(audioCtx.destination);
+  master.gain.linearRampToValueAtTime(0.92, audioCtx.currentTime + 3);
+    const _comp=audioCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(audioCtx.destination);
 
   // Convolver reverb
   const revBuf = audioCtx.createBuffer(2, audioCtx.sampleRate * 4, audioCtx.sampleRate);
@@ -172,7 +174,7 @@ function initAudio() {
     osc.type = 'sine';
     osc.frequency.value = freq * (1 + Math.random() * 0.01);
     g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(0.06, now + 0.03);
+    g.gain.linearRampToValueAtTime(0.84, now + 0.03);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 2.5);
     osc.connect(g); g.connect(rev);
     osc.start(now); osc.stop(now + 2.5);
@@ -195,3 +197,6 @@ function animate() {
 // Pre-warm
 for (let i = 0; i < 5000; i++) PARTICLES.forEach(p => stepLorenz(p));
 requestAnimationFrame(animate);
+
+
+

@@ -113,8 +113,10 @@ function startAudio() {
     if (ac.state === 'suspended') ac.resume();
 
     const master = ac.createGain();
-    master.gain.value = 0.10;
-    master.connect(ac.destination);
+    master.gain.value = 0.900;
+      const _comp=ac.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(ac.destination);
 
     // Deep earth drone — low rumbling tones
     [40, 60, 80].forEach((f, i) => {
@@ -126,10 +128,10 @@ function startAudio() {
       const lfo  = ac.createOscillator();
       const lfoG = ac.createGain();
       lfo.frequency.value = 0.05 + i * 0.04;
-      lfoG.gain.value = 0.5;
+      lfoG.gain.value = 0.900;
       lfo.connect(lfoG); lfoG.connect(osc.frequency);
       lfo.start();
-      g.gain.value = 0.20 / (i + 1);
+      g.gain.value = 0.700 / (i + 1);
       osc.connect(g); g.connect(master); osc.start();
     });
 
@@ -146,7 +148,7 @@ function startAudio() {
     filter.frequency.value = 400;
     filter.Q.value = 0.5;
     const windGain = ac.createGain();
-    windGain.gain.value = 0.04;
+    windGain.gain.value = 0.140;
     noiseNode.connect(filter); filter.connect(windGain); windGain.connect(master);
     noiseNode.start();
 
@@ -262,3 +264,6 @@ function animate() {
 }
 
 requestAnimationFrame(animate);
+
+
+

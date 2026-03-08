@@ -87,8 +87,10 @@ function initAudio() {
 
   const master = audioCtx.createGain();
   master.gain.setValueAtTime(0, audioCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.45, audioCtx.currentTime + 2.5);
-  master.connect(audioCtx.destination);
+  master.gain.linearRampToValueAtTime(0.92, audioCtx.currentTime + 2.5);
+    const _comp=audioCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(audioCtx.destination);
 
   // Fire crackle = filtered noise
   const bufLen = audioCtx.sampleRate * 2;
@@ -107,8 +109,8 @@ function initAudio() {
   const bp = audioCtx.createBiquadFilter();
   bp.type = 'bandpass'; bp.frequency.value = 1200; bp.Q.value = 0.5;
 
-  const lpGain = audioCtx.createGain(); lpGain.gain.value = 0.55;
-  const bpGain = audioCtx.createGain(); bpGain.gain.value = 0.20;
+  const lpGain = audioCtx.createGain(); lpGain.gain.value = 0.920;
+  const bpGain = audioCtx.createGain(); bpGain.gain.value = 0.700;
 
   noise.connect(lp); lp.connect(lpGain); lpGain.connect(master);
   noise.connect(bp); bp.connect(bpGain); bpGain.connect(master);
@@ -131,7 +133,7 @@ function initAudio() {
     for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/d.length, 3)*0.8;
     const s = audioCtx.createBufferSource();
     s.buffer = b;
-    const g = audioCtx.createGain(); g.gain.value = 0.25;
+    const g = audioCtx.createGain(); g.gain.value = 0.850;
     s.connect(g); g.connect(master);
     s.start(now);
     setTimeout(crackle, 80 + Math.random() * 320);
@@ -205,3 +207,6 @@ function animate() {
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
+
+
+

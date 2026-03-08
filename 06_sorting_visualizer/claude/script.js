@@ -285,13 +285,14 @@ async function startAudio() {
 
     masterGain = ac.createGain();
     masterGain.gain.setValueAtTime(0, ac.currentTime);
-    masterGain.gain.linearRampToValueAtTime(0.35, ac.currentTime + 2);
-    masterGain.connect(ac.destination);
+    masterGain.gain.linearRampToValueAtTime(0.92, ac.currentTime + 2);
+    const _comp06=ac.createDynamicsCompressor();_comp06.threshold.value=-12;_comp06.knee.value=8;_comp06.ratio.value=6;_comp06.attack.value=0.003;_comp06.release.value=0.12;_comp06.connect(ac.destination);
+    masterGain.connect(_comp06);
 
     // Ambient hum
     const hum = ac.createOscillator();
     hum.type = 'triangle'; hum.frequency.value = 60;
-    const hg = ac.createGain(); hg.gain.value = 0.15;
+    const hg = ac.createGain(); hg.gain.value = 0.525;
     hum.connect(hg); hg.connect(masterGain); hum.start();
 
     audioReady = true;
@@ -306,7 +307,7 @@ function beep(val) {
   const env  = ac.createGain();
   osc.type = 'sine';
   osc.frequency.value = freq;
-  env.gain.setValueAtTime(0.1, now);
+  env.gain.setValueAtTime(0.350, now);
   env.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
   osc.connect(env); env.connect(ac.destination);
   osc.start(now); osc.stop(now + 0.055);
@@ -321,3 +322,6 @@ startAudio();
 // ── Boot ──────────────────────────────────────────────────────
 startSort('bubble');
 requestAnimationFrame(animate);
+
+
+

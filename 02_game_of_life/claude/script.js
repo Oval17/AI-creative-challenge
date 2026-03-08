@@ -298,12 +298,13 @@
     if (audioReady) return;
     audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
     masterGain = audioCtx.createGain();
-    masterGain.gain.setValueAtTime(0.0, audioCtx.currentTime);
-    masterGain.gain.linearRampToValueAtTime(0.55, audioCtx.currentTime + 2);
+    masterGain.gain.setValueAtTime(0.000, audioCtx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(0.88, audioCtx.currentTime + 2);
 
     reverbNode = buildReverb(audioCtx);
     reverbNode.connect(masterGain);
-    masterGain.connect(audioCtx.destination);
+    const _comp02=audioCtx.createDynamicsCompressor();_comp02.threshold.value=-12;_comp02.knee.value=8;_comp02.ratio.value=6;_comp02.attack.value=0.003;_comp02.release.value=0.12;_comp02.connect(audioCtx.destination);
+    masterGain.connect(_comp02);
 
     audioReady = true;
     startAmbientDrone();
@@ -394,7 +395,7 @@
     const src = audioCtx.createBufferSource();
     src.buffer = buf;
     const g    = audioCtx.createGain();
-    g.gain.value = 0.18;
+    g.gain.value = 0.630;
     src.connect(g);
     g.connect(reverbNode);
     src.start(now);
@@ -414,3 +415,6 @@
   seedGrid();
   requestAnimationFrame(loop);
 })();
+
+
+

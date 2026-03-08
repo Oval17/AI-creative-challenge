@@ -136,14 +136,16 @@ function initAudio(){
   aCtx=new(window.AudioContext||window.webkitAudioContext)();
   const master=aCtx.createGain();
   master.gain.setValueAtTime(0,aCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.55,aCtx.currentTime+2.5);
-  master.connect(aCtx.destination);
+  master.gain.linearRampToValueAtTime(0.88,aCtx.currentTime+2.5);
+    const _comp=aCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(aCtx.destination);
 
   // Plate reverb (short, bright)
   const rb=aCtx.createBuffer(2,aCtx.sampleRate*1.8,aCtx.sampleRate);
   for(let ch=0;ch<2;ch++){const d=rb.getChannelData(ch);for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3.5);}
   const rev=aCtx.createConvolver();rev.buffer=rb;
-  const revG=aCtx.createGain();revG.gain.value=0.45;
+  const revG=aCtx.createGain();revG.gain.value=0.810;
   rev.connect(revG);revG.connect(master);
 
   // Water stream: layered band-passed noise (turbulent water sound)
@@ -166,7 +168,7 @@ function initAudio(){
 
   // Gentle sine pad — like underwater resonance (Fm-ish)
   const carrier=aCtx.createOscillator();const carG=aCtx.createGain();
-  carrier.type='sine';carrier.frequency.value=110;carG.gain.value=0.08;
+  carrier.type='sine';carrier.frequency.value=110;carG.gain.value=0.850;
   const mod=aCtx.createOscillator();const modG=aCtx.createGain();
   mod.type='sine';mod.frequency.value=110.5;modG.gain.value=50;
   mod.connect(modG);modG.connect(carrier.frequency);
@@ -180,7 +182,7 @@ function initAudio(){
     o.type='sine';o.frequency.setValueAtTime(freq*1.5,now);
     o.frequency.exponentialRampToValueAtTime(freq,now+0.08);
     g.gain.setValueAtTime(0,now);
-    g.gain.linearRampToValueAtTime(0.15,now+0.005);
+    g.gain.linearRampToValueAtTime(0.92,now+0.005);
     g.gain.exponentialRampToValueAtTime(0.0001,now+0.6);
     o.connect(g);g.connect(rev);o.start(now);o.stop(now+0.65);
     setTimeout(droplet,300+Math.random()*900);
@@ -192,7 +194,7 @@ function initAudio(){
   const wd=wb.getChannelData(0);for(let i=0;i<wd.length;i++) wd[i]=Math.random()*2-1;
   const ws=aCtx.createBufferSource();ws.buffer=wb;ws.loop=true;
   const wlp=aCtx.createBiquadFilter();wlp.type='lowpass';wlp.frequency.value=180;wlp.Q.value=5;
-  const wg=aCtx.createGain();wg.gain.value=0.1;
+  const wg=aCtx.createGain();wg.gain.value=0.630;
   const wLfo=aCtx.createOscillator();const wLg=aCtx.createGain();
   wLfo.frequency.value=0.07;wLg.gain.value=160;
   wLfo.connect(wLg);wLg.connect(wlp.frequency);wLfo.start();
@@ -203,3 +205,6 @@ setTimeout(()=>{try{initAudio();}catch(e){}},500);
 
 function animate(){step();render();requestAnimationFrame(animate);}
 requestAnimationFrame(animate);
+
+
+

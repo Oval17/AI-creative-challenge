@@ -121,8 +121,10 @@ function initAudio() {
   aCtx = new (window.AudioContext || window.webkitAudioContext)();
   const master = aCtx.createGain();
   master.gain.setValueAtTime(0, aCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.5, aCtx.currentTime + 3);
-  master.connect(aCtx.destination);
+  master.gain.linearRampToValueAtTime(0.80, aCtx.currentTime + 3);
+    const _comp=aCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(aCtx.destination);
 
   // Long cave reverb (3 s tail)
   const rb = aCtx.createBuffer(2, aCtx.sampleRate * 3.5, aCtx.sampleRate);
@@ -131,7 +133,7 @@ function initAudio() {
     for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, 1.8);
   }
   const rev = aCtx.createConvolver(); rev.buffer = rb;
-  const revG = aCtx.createGain(); revG.gain.value = 0.6;
+  const revG = aCtx.createGain(); revG.gain.value = 0.600;
   rev.connect(revG); revG.connect(master);
 
   // Deep cave breath — very slow filtered noise (wind through tunnels)
@@ -139,10 +141,10 @@ function initAudio() {
   const nd = nb.getChannelData(0); for (let i=0; i<nd.length; i++) nd[i] = Math.random()*2-1;
   const ns = aCtx.createBufferSource(); ns.buffer = nb; ns.loop = true;
   const lp = aCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220; lp.Q.value = 3;
-  const windG = aCtx.createGain(); windG.gain.value = 0.12;
+  const windG = aCtx.createGain(); windG.gain.value = 0.420;
   // Slow LFO breathes the wind in and out
   const windLfo = aCtx.createOscillator(); const windLfog = aCtx.createGain();
-  windLfo.frequency.value = 0.08; windLfog.gain.value = 0.09;
+  windLfo.frequency.value = 0.08; windLfog.gain.value = 0.315;
   windLfo.connect(windLfog); windLfog.connect(windG.gain);
   ns.connect(lp); lp.connect(windG); windG.connect(master); windG.connect(rev); ns.start(); windLfo.start();
 
@@ -157,7 +159,7 @@ function initAudio() {
     o1.type = 'sine'; o2.type = 'sine';
     o1.frequency.value = freq; o2.frequency.value = freq * 1.003;
     g.gain.setValueAtTime(0, aCtx.currentTime);
-    g.gain.linearRampToValueAtTime(0.04, aCtx.currentTime + 4);
+    g.gain.linearRampToValueAtTime(0.56, aCtx.currentTime + 4);
     o1.connect(g); o2.connect(g); g.connect(rev); o1.start(); o2.start();
   }
   makePad(110); makePad(164.8); makePad(220); // root, fifth, octave
@@ -170,13 +172,13 @@ function initAudio() {
     // Marimba/stone timbre: sine with fast attack, slow exponential decay
     o.type = 'sine'; o.frequency.value = freq;
     g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(0.22, now + 0.008);
+    g.gain.linearRampToValueAtTime(0.88, now + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 2.8);
     // Add 2nd harmonic (slight overtone)
     const o2 = aCtx.createOscillator(); const g2 = aCtx.createGain();
     o2.type = 'sine'; o2.frequency.value = freq * 2.76; // stone partial
     g2.gain.setValueAtTime(0, now);
-    g2.gain.linearRampToValueAtTime(0.06, now + 0.005);
+    g2.gain.linearRampToValueAtTime(0.84, now + 0.005);
     g2.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
     o.connect(g); g.connect(rev); o2.connect(g2); g2.connect(rev);
     o.start(now); o.stop(now + 3); o2.start(now); o2.stop(now + 1.2);
@@ -195,7 +197,7 @@ function initAudio() {
     o.frequency.setValueAtTime(freq * 1.4, now);
     o.frequency.exponentialRampToValueAtTime(freq, now + 0.06);
     g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(0.10, now + 0.004);
+    g.gain.linearRampToValueAtTime(0.64, now + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
     o.connect(g); g.connect(rev); o.start(now); o.stop(now + 0.75);
     setTimeout(drip, 1200 + Math.random() * 4000);
@@ -366,3 +368,6 @@ function animate() {
 }
 
 requestAnimationFrame(animate);
+
+
+

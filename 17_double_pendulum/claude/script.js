@@ -91,8 +91,10 @@ function initAudio() {
 
   const master = audioCtx.createGain();
   master.gain.setValueAtTime(0, audioCtx.currentTime);
-  master.gain.linearRampToValueAtTime(0.35, audioCtx.currentTime + 2);
-  master.connect(audioCtx.destination);
+  master.gain.linearRampToValueAtTime(0.92, audioCtx.currentTime + 2);
+    const _comp=audioCtx.createDynamicsCompressor();_comp.threshold.value=-12;_comp.knee.value=8;_comp.ratio.value=6;_comp.attack.value=0.003;_comp.release.value=0.12;
+master.connect(_comp);
+  _comp.connect(audioCtx.destination);
 
   // Reverb
   const revBuf = audioCtx.createBuffer(2, audioCtx.sampleRate * 3, audioCtx.sampleRate);
@@ -109,7 +111,7 @@ function initAudio() {
   const oscGain = audioCtx.createGain();
   oscNode.type = 'triangle';
   oscNode.frequency.value = 110;
-  oscGain.gain.value = 0.15;
+  oscGain.gain.value = 0.525;
   oscNode.connect(oscGain); oscGain.connect(rev);
   oscNode.start();
 
@@ -118,7 +120,7 @@ function initAudio() {
   const osc2g = audioCtx.createGain();
   osc2.type = 'sine';
   osc2.frequency.value = 220;
-  osc2g.gain.value = 0.08;
+  osc2g.gain.value = 0.280;
   osc2.connect(osc2g); osc2g.connect(rev);
   osc2.start();
 
@@ -208,3 +210,6 @@ function animate() {
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
+
+
+

@@ -170,15 +170,16 @@ function initAudio() {
   // --- Drone: two detuned sine oscillators
   droneGain = audioCtx.createGain();
   droneGain.gain.setValueAtTime(0, audioCtx.currentTime);
-  droneGain.gain.linearRampToValueAtTime(0.07, audioCtx.currentTime + 2);
-  droneGain.connect(audioCtx.destination);
+  droneGain.gain.linearRampToValueAtTime(0.88, audioCtx.currentTime + 2);
+  const _comp03=audioCtx.createDynamicsCompressor();_comp03.threshold.value=-12;_comp03.knee.value=8;_comp03.ratio.value=6;_comp03.attack.value=0.003;_comp03.release.value=0.12;_comp03.connect(audioCtx.destination);
+  droneGain.connect(_comp03);
 
   [110, 110.3, 220.1].forEach(freq => {
     const osc = audioCtx.createOscillator();
     osc.type = 'sine';
     osc.frequency.value = freq;
     const g = audioCtx.createGain();
-    g.gain.value = 0.33;
+    g.gain.value = 0.850;
     osc.connect(g);
     g.connect(droneGain);
     osc.start();
@@ -187,7 +188,7 @@ function initAudio() {
   // --- Wind: filtered noise
   windGain = audioCtx.createGain();
   windGain.gain.setValueAtTime(0, audioCtx.currentTime);
-  windGain.gain.linearRampToValueAtTime(0.04, audioCtx.currentTime + 3);
+  windGain.gain.linearRampToValueAtTime(0.56, audioCtx.currentTime + 3);
   windGain.connect(audioCtx.destination);
 
   const bufSize = audioCtx.sampleRate * 2;
