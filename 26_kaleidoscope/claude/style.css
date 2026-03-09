@@ -1,0 +1,11 @@
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#050505;overflow:hidden;display:flex;justify-content:center;align-items:center}
+.wrapper{position:relative;width:1080px;height:1920px;background:#050505;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+.title-block{width:100%;text-align:center;padding-top:80px;z-index:10}
+.model-name{font-family:"Cormorant Garamond",serif;font-weight:300;letter-spacing:0.35em;color:rgba(255,255,255,0.7);font-size:28px;text-transform:uppercase}
+.sim-name{font-family:"Cormorant Garamond",serif;font-weight:600;letter-spacing:0.04em;color:#fff;font-size:72px;margin-top:10px}
+.divider{width:320px;height:1px;margin:28px auto 0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4),transparent)}
+.canvas-area{flex:1;display:flex;justify-content:center;align-items:center;width:100%}
+canvas{display:block}
+.bottom-label{width:100%;text-align:center;padding-bottom:70px}
+.bottom-label p{font-family:"Cormorant Garamond",serif;font-weight:300;letter-spacing:0.25em;color:rgba(255,255,255,0.6);font-size:26px}
